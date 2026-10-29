@@ -4,7 +4,7 @@
 |---|---|---|
 | TS0 — the spec | ✅ | TS-1 |
 | TS1 — TanStack Start on Workers | ✅ | TS-2 |
-| TS2 — a baseline | planned | TS-3 |
+| TS2 — a baseline | ✅ | TS-3, tagged `baseline-v1` |
 
 ## Departures from the upstream template
 

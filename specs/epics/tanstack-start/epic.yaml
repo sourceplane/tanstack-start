@@ -9,7 +9,7 @@ metadata:
 spec:
   title: "Vercel's TanStack Start template on Cloudflare Workers"
   summary: "Vercel's TanStack Start template — the welcome page, a todo list read and changed by server functions, an API route and the three SSR modes — runs on Cloudflare Workers + Static Assets through Cloudflare's Vite plugin, TanStack Start's own Cloudflare target, the todos kept in each visitor's own cookie, inside the Cirrus baseline's repository conventions, and becomes an Orun baseline that takes a new TanStack Start site from nothing to live on stage and prod in one landing."
-  state: started
+  state: completed
   milestones:
     - name: "TS0 — the spec"
       exitCriteria:
