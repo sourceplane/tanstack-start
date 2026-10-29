@@ -1,0 +1,86 @@
+apiVersion: sourceplane.io/v1
+kind: Component
+metadata:
+  name: web
+  description: The TanStack Start site (TanStack Start on Cloudflare Workers + Static Assets via @cloudflare/vite-plugin, per environment)
+spec:
+  type: cloudflare-workers-assets-turbo
+  lifecycle: production
+  owner: platform
+  # Its pages, attached to it in the workspace's catalog: what the Docs
+  # library shows for it, and what the catalog's docs and runbook checks read.
+  # Generated from what this manifest and its sources declare.
+  docs:
+    overview: docs/overview.md
+    pages:
+      - { path: docs/architecture.md, role: architecture, title: Architecture }
+      - { path: docs/runbook.md, role: runbook, title: Runbook }
+  # `app`, not `web`: a domain and a component share one name space in the
+  # catalog, and a domain called `web` hid this component from it.
+  domain: app
+  path: apps/web
+  # Its own lane per environment: the framework build is the longest job in
+  # the plan, and a shared lane would wait on it.
+  lane: isolated
+  subscribe:
+    environments:
+      - name: dev
+        profile: verify
+      - name: stage
+        profile: verify
+        profileRules:
+          - profile: deploy
+            when:
+              triggerRef: github-push-main
+      - name: prod
+        profile: verify
+        profileRules:
+          - profile: deploy
+            when:
+              triggerRef: github-push-main
+  parameters:
+    nodeVersion: '22'
+    pnpmVersion: '10.12.1'
+
+    workspaceDir: ../..
+    appDir: .
+
+    turboFilter: '@app/web'
+    # The committed config: worker name, compatibility date and flags, and
+    # the Worker as `vite build` leaves it — the server bundle and its chunks
+    # uploaded as built, the browser's files as Static Assets. The deploy runs
+    # `wrangler deploy --config wrangler.jsonc`, which reads this file and not
+    # the build's own redirect, so it names the Worker exactly as the config
+    # the Cloudflare Vite plugin writes beside the build (dist/server) does.
+    wranglerConfig: wrangler.jsonc
+
+    # Cloudflare's Vite plugin (TanStack Start's Cloudflare target) writes the
+    # Worker to dist/server (index.js and its chunks under assets/) and the
+    # browser's files — hashed JS and CSS, public/ — to dist/client; both
+    # deploy in one `wrangler deploy`.
+    workerEntrypoint: dist/server/index.js
+    assetsDir: dist/client
+
+    # Per-env worker name: tanstack-start-web-{dev,stage,prod}.
+    workerName: tanstack-start-web
+    environmentAwareWorkerName: true
+
+    # The account's workers.dev subdomain; exported to the smoke step as
+    # ${WORKERS_DEV_SUBDOMAIN} and used to build ${DEPLOYED_URL}.
+    workersDevSubdomain: your-workers-subdomain
+
+    installCommand: pnpm install --frozen-lockfile
+    buildCommand: pnpm exec turbo run build --filter=@app/web
+
+    # Smoke: the home page, rendered by the Worker, carries the nav's
+    # server-functions link; the API route answers its JSON; and an unknown
+    # path is TanStack Router's own not-found page with a 404, rendered in
+    # the layout. Not the site's name: that is the owner's to change, and
+    # HTML-escaped when it carries an `&`. Each response is buffered before
+    # grep so an early match cannot SIGPIPE curl.
+    smokeCommand: 'html=$(curl -sfL "${DEPLOYED_URL}/") && echo "${html}" | grep -q ''href="/demo/start/server-funcs"'' && api=$(curl -sf "${DEPLOYED_URL}/demo/api/names") && echo "${api}" | grep -q ''"Alice"'' && nf=$(curl -s -w ''\n%{http_code}'' "${DEPLOYED_URL}/smoke-not-found") && echo "${nf}" | grep -q ''<p>Not Found</p>'' && [ "$(echo "${nf}" | tail -n 1)" = 404 ]'
+  labels:
+    team: platform
+    layer: delivery
+    surface: web
+    runtime: cloudflare

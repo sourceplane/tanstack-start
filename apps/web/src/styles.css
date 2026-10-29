@@ -1,0 +1,20 @@
+/* Tailwind reads its classes from src/ alone. Left to detect its sources, it
+   scans the app's directory, and outside a git checkout (a CI job's staged
+   tree) nothing tells it to skip dist/: the server build then reads the
+   client build's output, makes a different stylesheet, and every page links
+   a file the client build never wrote. */
+@import "tailwindcss" source("./");
+
+body {
+  @apply m-0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen",
+    "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, "Courier New",
+    monospace;
+}

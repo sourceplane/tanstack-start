@@ -3,9 +3,37 @@
 | Milestone | State | Landed |
 |---|---|---|
 | TS0 — the spec | ✅ | TS-1 |
-| TS1 — TanStack Start on Workers | planned | TS-2 |
+| TS1 — TanStack Start on Workers | ✅ | TS-2 |
 | TS2 — a baseline | planned | TS-3 |
 
 ## Departures from the upstream template
 
-Recorded as they land, from TS1 on.
+Everything not listed here is the template as it is upstream at `84878e5`
+(vercel/vercel `examples/tanstack-start`, Apache-2.0; its licence ships as
+`apps/web/LICENSE`, and `apps/web/README.md` lists the files changed).
+
+| # | What | Why |
+|---|---|---|
+| 1 | The app lives in `apps/web` of a pnpm workspace (`@app/web`); upstream's `pnpm-lock.yaml` is replaced by the workspace's lockfile | The workspace's shape (sveltekit-boilerplate's) |
+| 2 | `nitro` (`nitro/vite`) → `@cloudflare/vite-plugin` 1.66.0 with wrangler 4.155.0; `wrangler.jsonc` added | TanStack Start's documented Cloudflare target (design §2) |
+| 3 | TanStack Start `1.133.37` → `1.169.4` (Router `1.170.46`, router devtools `1.167.2`, devtools `0.10.13`), Vite `^7.1.7` → `^8.3.4`, `@vitejs/plugin-react` `^5.0.4` → `^6.1.2`, vitest `^3.0.5` → `^5.0.4` | The current Start and the plugin's target; Start 1.169 requires Vite 8 |
+| 4 | `.inputValidator` → `.validator` in `addTodo`; the SPA demo's state typed as the list's element | 1.169's rename, and its narrower inference of a server function's result |
+| 5 | The todos kept in the visitor's own httpOnly cookie (`src/data/todos.ts`; `Path=/`, `SameSite=Lax`, `Secure` over HTTPS; 50 × 100 characters, 3,800 encoded bytes) instead of `todos.json` through `node:fs`; a todo the cookie cannot hold is refused with its reason, shown under the input | A Worker has no disk that outlives a request (design §2) |
+| 6 | `vite-tsconfig-paths` dropped for Vite's own `resolve.tsconfigPaths` | Vite 8 resolves tsconfig paths itself and warns that the plugin is redundant |
+| 7 | The `<title>` reads `SITE_NAME` from `src/lib/site.ts` (upstream's literal `TanStack Start Starter`) | One rename seam |
+| 8 | The template's `biome.json`, run as `biome lint` (`@biomejs/biome` 2.2.4, the version its schema names), and the code made to pass it: `type="button"` on four buttons, the feature cards keyed by title, `submitTodo`'s hook dependencies (which drops upstream's dead `todos =` reassignment) | Upstream ships the config but not Biome, and its code fails the config's recommended rules; the formatter (tabs) is not run, so the formatting stays upstream's |
+| 9 | Unused dependencies dropped: `@tanstack/react-router-ssr-query`, `@tanstack/router-plugin` (Start's plugin brings its own), `@testing-library/dom`, `@testing-library/react`, `jsdom`, `web-vitals` | Nothing imports them |
+| 10 | `src/routeTree.gen.ts` regenerated | 1.169's router generator orders and names routes differently; committed as upstream commits it |
+| 11 | `src/styles.css`: `@import "tailwindcss" source("./")` — Tailwind reads its classes from `src/` alone | Left to detect its sources, Tailwind scans the app's directory; outside a git checkout (a CI job's staged tree) nothing excludes `dist/`, the server build reads the client build's output, emits a stylesheet with another hash, and every page links a CSS file that is not in `dist/client` (404). The end-to-end tier caught it in the staged tree |
+| 12 | Tests (vitest, node): the site's name seam, the todo store | The template has a `test` script and no tests |
+| 13 | `component.yaml`, `docs/`, `vitest.config.ts`, `LICENSE` | The deploy contract, its generated pages, the tests' config without the framework plugins, and Apache-2.0's copy of the licence |
+
+Kept as upstream, and worth knowing: TanStack's devtools render in
+production (risk TS-E); `/demo/start/api-request` fetches the API route
+from the browser; the drawer's SSR sub-menu is collapsed by default.
+
+## Measured
+
+The Worker: 1 360.69 KiB, 304.58 KiB gzipped, inside Workers Free's 3 MiB
+(`wrangler deploy --dry-run`, the same from
+`wrangler.jsonc` and from the plugin's `dist/server/wrangler.json`).
