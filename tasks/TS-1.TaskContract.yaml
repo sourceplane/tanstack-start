@@ -1,0 +1,15 @@
+apiVersion: orun.io/v1
+kind: TaskContract
+metadata:
+  name: TS-1
+  title: "The spec"
+spec:
+  goal: The tanstack-start repository is born with its intent, CI, tooling and spec index, and the tanstack-start epic — declaration, doc set and task contracts — is on main
+  affects:
+    - specs/epics/tanstack-start
+    - specs/epics/README.md
+    - tasks
+  doneWhen:
+    - epic.yaml, README, design, implementation plan, risks and status are on main
+    - the three task contracts exist
+  gates: []

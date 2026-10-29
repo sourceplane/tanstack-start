@@ -1,0 +1,17 @@
+apiVersion: orun.io/v1
+kind: TaskContract
+metadata:
+  name: TS-2
+  title: "TanStack Start on Workers"
+spec:
+  goal: Vercel's TanStack Start template runs on Cloudflare Workers + Static Assets through Cloudflare's Vite plugin — every route, its server functions and API route in the Worker, the todos in the visitor's own cookie — with its tests, and its README saying how it maps to Vercel
+  affects:
+    - apps/web
+    - pnpm-lock.yaml
+    - pnpm-workspace.yaml
+    - tooling/catalog
+    - README.md
+  doneWhen:
+    - pnpm typecheck, lint, test and build are green
+    - wrangler dev serves the welcome page, the todos through their server functions, the API route, the SSR demos and a 404
+  gates: []

@@ -1,0 +1,30 @@
+# The epic's declaration. metadata.name equals the directory name; metadata.key
+# is the task-key prefix this epic reserves (TS → TS-1, TS-2, …). Owner, target
+# date and health are the platform's — never written here.
+apiVersion: orun.io/v1
+kind: Epic
+metadata:
+  name: tanstack-start
+  key: TS
+spec:
+  title: "Vercel's TanStack Start template on Cloudflare Workers"
+  summary: "Vercel's TanStack Start template — the welcome page, a todo list read and changed by server functions, an API route and the three SSR modes — runs on Cloudflare Workers + Static Assets through Cloudflare's Vite plugin, TanStack Start's own Cloudflare target, the todos kept in each visitor's own cookie, inside the Cirrus baseline's repository conventions, and becomes an Orun baseline that takes a new TanStack Start site from nothing to live on stage and prod in one landing."
+  state: started
+  milestones:
+    - name: "TS0 — the spec"
+      exitCriteria:
+        - "the repository is born with its intent, CI, tooling and spec index, and this doc set and the task contracts are on main"
+      tasks: [TS-1]
+    - name: "TS1 — TanStack Start on Workers"
+      exitCriteria:
+        - "apps/web is the upstream app on TanStack Start 1.169, built by @cloudflare/vite-plugin into one Worker with Static Assets, deployed by `wrangler deploy --config wrangler.jsonc`"
+        - "`pnpm typecheck`, `pnpm lint`, `pnpm test` and `pnpm build` are green"
+        - "`wrangler dev` serves every route: the welcome page, the todos through their GET and POST server functions and the visitor's cookie, the API route, the three SSR modes, the static files and a 404"
+        - "the README says how to run, test and deploy it, and how every Vercel piece maps to Cloudflare"
+      tasks: [TS-2]
+    - name: "TS2 — a baseline"
+      exitCriteria:
+        - "blueprint.yaml (the console card) and repo-blueprint.yaml (the build) take a new TanStack Start site from nothing to live on stage and prod in one landing, then record it"
+        - "a site built from it carries the site only, renamed throughout to its own name, repository and Worker"
+        - "Baseline CI is green: contract tests, generated component docs, the blueprint read by the pinned orun, the leak gate, the offline bootstrap and the end-to-end tier — the stage lane's steps in a staged job tree, the committed Worker config held to the one the Vite plugin writes, the Worker smoke-tested and walked"
+      tasks: [TS-3]
