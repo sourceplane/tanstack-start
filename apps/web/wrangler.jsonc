@@ -1,0 +1,19 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // The Worker as `vite build` leaves it, for `wrangler deploy --config
+  // wrangler.jsonc` — the deploy lane's command, which names this file and so
+  // never reads the build's own redirect (.wrangler/deploy/config.json).
+  // These lines match the config the Cloudflare Vite plugin writes beside the
+  // build (dist/server/wrangler.json), and a dry-run deploy of either uploads
+  // the same modules: the server bundle and its chunks uploaded as built, and
+  // the browser's files served as Static Assets ahead of it.
+  // vite.config.ts names the source entry the plugin builds.
+  "name": "tanstack-start-web",
+  "main": "dist/server/index.js",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "no_bundle": true,
+  "rules": [{ "type": "ESModule", "globs": ["**/*.js", "**/*.mjs"] }],
+  "assets": { "directory": "dist/client" },
+  "observability": { "enabled": true }
+}

@@ -11,7 +11,7 @@ somebody else's site in one landing.**
 
 | | |
 |---|---|
-| Status | In progress — TS0 on main |
+| Status | In progress — TS1 on main: the site runs on Workers |
 | Upstream | [vercel/vercel › examples/tanstack-start](https://github.com/vercel/vercel/tree/main/examples/tanstack-start), at `84878e5` — Apache-2.0 |
 | Reference | [sveltekit-boilerplate](https://github.com/sourceplane/sveltekit-boilerplate) (the Vite-built Worker + Static Assets scaffolding, and the cookie-kept todos) |
 | Key | `TS` |
