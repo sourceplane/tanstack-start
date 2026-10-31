@@ -431,7 +431,91 @@ for path in manifests:
             if ph not in input_keys:
                 B(f"verify url interpolates {{{ph}}}, which is not an input")
 
-    checked.append((name, len(declared), len((prog or {}).get("milestones") or [])))
+    # ── stages: where a build may stop (saas-orun-work WA5) ───────────────
+    #
+    # The platform's parser (`readStages` in orun-cloud's
+    # blueprint-manifest.ts) holds the block to its grammar: both stages, no
+    # third, each a phase name, the two different, neither named after the
+    # OTHER stage's key. Mirrored here, because the parser only ever sees
+    # this file at a tag, and a tag is never moved.
+    #
+    # What the parser cannot check is that the names are PHASES — it never
+    # reads the build document; the runner refuses an unknown one, mid-build.
+    # This file reads both, so it checks that here: each stage is a phase
+    # repo-blueprint.yaml declares, and scaffold runs before live. What each
+    # stage DOES (GitHub only, then the deploy) is phases.test.sh's.
+    stages = spec.get("stages")
+    phase_names = [p_.get("name") for p_ in bp_phases]
+    PHASE_NAME = re.compile(r"^[a-z0-9][a-z0-9._-]{0,79}$")
+    if stages is not None:
+        if not isinstance(stages, dict):
+            B("spec.stages must be a mapping {scaffold: <phase>, live: <phase>}")
+            stages = None
+    if stages is not None:
+        if set(stages) != {"scaffold", "live"}:
+            B(f"spec.stages declares {sorted(stages)}; it is exactly scaffold and live")
+        sc, lv = stages.get("scaffold"), stages.get("live")
+        for key, value in (("scaffold", sc), ("live", lv)):
+            if not isinstance(value, str) or not PHASE_NAME.match(value):
+                B(f"spec.stages.{key} is {value!r}, not a phase name")
+            elif value not in phase_names:
+                B(f"spec.stages.{key} names {value}, which repo-blueprint.yaml does not declare "
+                  f"(its phases: {', '.join(phase_names)}) — the runner would refuse the build")
+            elif value in ("scaffold", "live") and value != key:
+                B(f"spec.stages.{key} names the phase {value!r}, the other stage's key — the "
+                  f"platform accepts either, so the two must not cross")
+        if sc == lv:
+            B(f"spec.stages names {sc} for both stages — a build that stops after the scaffold "
+              f"must leave a phase to go live with")
+        elif sc in phase_names and lv in phase_names and phase_names.index(sc) > phase_names.index(lv):
+            B(f"spec.stages: scaffold {sc} runs after live {lv}")
+        # The preview is the stage environment: the app's stage URL is what
+        # orun.work frames, and its prod URL the live link (design WA-D9).
+        envs = (spec.get("verify") or {}).get("envs") or []
+        if "stage" not in envs or "prod" not in envs:
+            B(f"spec.stages is declared and spec.verify.envs is {envs} — an eligible baseline "
+              f"names stage (the preview) and prod (the live link)")
+
+    # ── lateBound: an input the scaffold stage runs without ───────────────
+    #
+    # The parser's two rules: `lateBound` needs `spec.stages` (there is no
+    # "before its phase" without a stage boundary), and an input derived from
+    # a late-bound one is late too. And the one only this repository can
+    # check: the BUILD DOCUMENT must treat it the same way. A card input that
+    # is late-bound and a build input that is not would be refused by orun's
+    # resume rule when the live stage brings the real value; one the build
+    # requires with no default would refuse the scaffold build outright.
+    late = set()
+    for field in spec.get("inputs") or []:
+        key = field.get("key")
+        if "lateBound" in field and not isinstance(field.get("lateBound"), bool):
+            B(f"inputs[{key}].lateBound is {field.get('lateBound')!r}, not a boolean")
+        if field.get("lateBound") is True:
+            late.add(key)
+    if late and not spec.get("stages"):
+        B(f"inputs {sorted(late)} are lateBound and spec.stages is not declared — without a "
+          f"stage boundary there is no later phase to bind them in")
+    for field in spec.get("inputs") or []:
+        derive = field.get("derive")
+        if derive and field.get("key") not in late:
+            for ref in re.findall(r"\{([a-z][a-z0-9_]*)\}", derive):
+                if ref in late:
+                    B(f"inputs[{field.get('key')}] derives from {{{ref}}}, which is lateBound — "
+                      f"declare it lateBound too")
+    if bp is not None:
+        bp_in = bp.get("inputs") or {}
+        for key in sorted(input_keys - {"env"}):
+            build = bp_in.get(key) if isinstance(bp_in.get(key), dict) else {}
+            if (key in late) != (build.get("lateBound") is True):
+                B(f"inputs[{key}] is {'' if key in late else 'not '}lateBound on the card and "
+                  f"{'' if build.get('lateBound') is True else 'not '}in repo-blueprint.yaml — "
+                  f"the two must agree, or one side refuses the value the other defers")
+            if key in late and (build.get("required") or "default" not in build):
+                B(f"inputs[{key}] is lateBound, and repo-blueprint.yaml requires it or gives it no "
+                  f"default — a build that stops after the scaffold has no value to give it")
+
+    checked.append((name, len(declared), len((prog or {}).get("milestones") or []),
+                    stages, sorted(late)))
 
 if problems:
     print("FAIL: a manifest and the blueprint disagree:", file=sys.stderr)
@@ -439,8 +523,11 @@ if problems:
         print(f"  - {p}", file=sys.stderr)
     sys.exit(1)
 
-for name, ns, nm in checked:
+for name, ns, nm, stages, late in checked:
     print(f"   {name}: {ns} secret(s), {nm} milestone(s) agree with repo-blueprint.yaml")
+    if stages:
+        print(f"   {name}: stages scaffold {stages['scaffold']} → live {stages['live']}; "
+              f"late-bound {', '.join(late) or 'none'}")
 PY
 
 echo "manifest.test.sh: ok"

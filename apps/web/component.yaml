@@ -46,6 +46,12 @@ spec:
     appDir: .
 
     turboFilter: '@app/web'
+    # The build learns which environment it deploys to: the lane exports
+    # DEPLOY_ENV=<dev|stage|prod> before buildCommand, and the Worker reads
+    # it to send stage's framing policy (src/lib/framing.ts) on stage alone.
+    # turbo.json passes it to the build (and keys the cache on it).
+    environmentBuildVar: DEPLOY_ENV
+
     # The committed config: worker name, compatibility date and flags, and
     # the Worker as `vite build` leaves it — the server bundle and its chunks
     # uploaded as built, the browser's files as Static Assets. The deploy runs

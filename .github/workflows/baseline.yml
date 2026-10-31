@@ -41,11 +41,11 @@ jobs:
           # names a packageManager, and then fails on a runner with no pnpm.
           # This job installs nothing.
           package-manager-cache: false
-      - name: Contract tests (manifest, phases, coverage, rebrand, retouch, bootstrap-defer)
+      - name: Contract tests (manifest, phases, coverage, rebrand, retouch, bootstrap-defer, subdomain)
         run: |
           set -euo pipefail
           python3 -c 'import yaml' 2>/dev/null || pip install --quiet pyyaml
-          for t in manifest phases coverage rebrand retouch bootstrap-defer; do
+          for t in manifest phases coverage rebrand retouch bootstrap-defer subdomain; do
             echo "── $t"
             bash "testing/$t.test.sh"
           done
@@ -65,8 +65,8 @@ jobs:
   # registry, compiles every `when` and narration template, and writes
   # nothing. Then the leak gate (what a site would carry) and the placement
   # tier (the offline bootstrap: every phase placed and finished by the
-  # blueprint's own hooks, then the site's own `orun plan` for the 01-product
-  # merge).
+  # blueprint's own hooks, then the site's own `orun plan` for each landing's
+  # merge; and a code-only build stopped after 01-scaffold, taken live later).
   blueprint:
     runs-on: ubuntu-latest
     steps:

@@ -15,10 +15,12 @@
 // where this tool comes from: dev took eight of eighteen lanes and stage and
 // prod got five each.)
 //
-// So 01-product defers the trigger and 03-docs, the last landing, puts it
-// back, exactly as tooling/bootstrap/promotion.mjs does for prod's gate:
+// So 02-live, the landing that deploys, defers the trigger and 03-docs, the
+// last landing, puts it back, exactly as tooling/bootstrap/promotion.mjs does
+// for prod's gate. (01-scaffold leaves it alone: while stage and prod are
+// parked by deploys.mjs, dev is what a merge to main plans.)
 //
-//   node tooling/bootstrap/dev-lanes.mjs --defer     # 01-product, before its landing
+//   node tooling/bootstrap/dev-lanes.mjs --defer     # 02-live, before its landing
 //   node tooling/bootstrap/dev-lanes.mjs --restore   # 03-docs, the last landing
 //   node tooling/bootstrap/dev-lanes.mjs --check     # prints deferred | active
 //

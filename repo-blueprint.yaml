@@ -8,11 +8,13 @@ metadata:
     server functions in each visitor's cookie, an API route and the three SSR
     modes, built by Cloudflare's Vite plugin onto Cloudflare Workers + Static
     Assets) and
-    take it from nothing to live on stage and prod in one landing, then record
-    it. Run one at a time with `--phase <name>` or the whole sequence with
-    `--resume`; see docs/phases/README.md for the contract every phase
-    follows, and BOOTSTRAP.md for the operator checklist no script can
-    perform.
+    take it from nothing to live on stage and prod in two stages: the code,
+    landed with GitHub alone (01-scaffold), then the site deployed and probed
+    once Cloudflare is there (02-live), then the record. Run one at a time
+    with `--phase <name>`, stop after the code with `--until 01-scaffold`, or
+    run the whole sequence with `--resume`; see docs/phases/README.md for the
+    contract every phase follows, and BOOTSTRAP.md for the operator checklist
+    no script can perform.
 
 # ── INPUTS ────────────────────────────────────────────────────────────────
 # The instance-identity contract, consumed by tooling/rebrand/rebrand.mjs via
@@ -51,19 +53,32 @@ inputs:
     required: true
     description: >-
       GitHub owner the site's repository is created under — and the owner in
-      the source link the site's nav carries. 01-product waits for the App
-      installation on THIS owner before it creates anything: the platform
-      learns of a pull request only through the installation on the account
-      that owns the repository.
+      the source link the site's nav carries. The platform learns of a pull
+      request only through the GitHub App installation on the account that
+      owns the repository, so 01-scaffold's `link` hook stops before the
+      landing unless the repository is linked to the workspace through it.
   subdomain:
     type: string
     default: "your-workers-subdomain"
+    # LATE-BOUND (saas-orun-work WA5): it belongs to the Cloudflare account,
+    # which a build that stops after 01-scaffold does not have yet. Such a
+    # build runs without it — the default above is the placeholder the
+    # scaffold brands into the tree — and the run that goes live supplies the
+    # real value: orun's "a resumed run reuses what the product was built
+    # with" rule exempts a late-bound input, so it may differ from what the
+    # scaffold recorded. 02-live's `subdomain` hook binds it into the tree
+    # and refuses the placeholder before anything deploys. An orun that
+    # predates the flag ignores it (and a fresh container has no record to
+    # differ from).
+    lateBound: true
     description: >-
       The workers.dev subdomain of the Cloudflare account the site deploys
       into — its URLs, the smoke, the probes. A console or `--from bst_…`
       build gets it from the workspace's Cloudflare connection
       (blueprint.yaml declares `from: connection.cloudflare.workersSubdomain`);
-      pass it with --set only for a hand-run build.
+      pass it with --set only for a hand-run build. Needed by 02-live, not
+      before: a code-only build (`--until 01-scaffold`) leaves the
+      placeholder, and 02-live binds the real value.
   repoPrivate:
     type: boolean
     default: true
@@ -80,7 +95,7 @@ inputs:
     from: workspace
     description: >-
       Orun Cloud workspace (ws_…) for the site's remote state. Unset, it is
-      the workspace the build runs in; with none anywhere, 01-product writes
+      the workspace the build runs in; with none anywhere, 01-scaffold writes
       a placeholder that fails loudly rather than silently claiming another
       tenant's workspace.
   epicSlug:
@@ -288,12 +303,16 @@ modules:
 # new milestone after the last, and a task naming a milestone the epic does
 # not have yet would create it out of order.
 #
+# A build that stops after 01-scaffold (a code-only app) opens all three
+# milestones and tasks too: the plane then says what is left to do, and the
+# build that goes live later finds them by the same identities.
+#
 # IN THE BACKGROUND (orun >= v2.88.0, `background: true` on every hook here).
-# Nothing a phase does before its landing reads the task plane — the provider
-# check, the placement, the rebrand, the repository, the secrets — so the
-# whole list runs beside 01-product instead of before it, in order. A hook
-# that works on the plane (`orun.task/ensure@v1`, `orun.pr/land@v1`) waits
-# for it to finish; a failure here stops the build at the next hook.
+# Nothing a phase does before its landing reads the task plane — the
+# placement, the rebrand, the repository, the secrets — so the whole list runs
+# beside 01-scaffold instead of before it, in order. A hook that works on the
+# plane (`orun.task/ensure@v1`, `orun.pr/land@v1`) waits for it to finish; a
+# failure here stops the build at the next hook.
 #
 # Each phase's own `task` hook runs `orun.task/ensure@v1` on its task again,
 # just before its landing. Same identity, so it finds rather than creates,
@@ -314,10 +333,10 @@ hooks:
         description: >-
           Everything the TanStack Start template builds for
           {{ .inputs.productname }} in {{ .inputs.githuborg }}/{{ .inputs.reponame }}:
-          the repository, its CI and the site live on stage and prod in one
-          landing, then the record of what went live. One milestone per phase,
-          in the order the phases run; one task per landing, each bound to the
-          pull request that lands it.
+          the repository and the site's code in one landing, then the site
+          live on stage and prod in a second, then the record of what went
+          live. One milestone per phase, in the order the phases run; one task
+          per landing, each bound to the pull request that lands it.
         owner: me
     - id: m01
       uses: orun.task/ensure@v1
@@ -325,9 +344,20 @@ hooks:
       with:
         kind: milestone
         epic: "{{ .inputs.epicSlug }}"
-        name: 01-product
+        name: 01-scaffold
         exitCriteria:
           - repository created under {{ .inputs.githuborg }} and linked to the workspace
+          - the whole site on main, branded, its deploy lanes parked
+          - CI on main green, deploying nothing
+    - id: m02
+      uses: orun.task/ensure@v1
+      background: true
+      with:
+        kind: milestone
+        epic: "{{ .inputs.epicSlug }}"
+        name: 02-live
+        exitCriteria:
+          - the deploy credentials minted from the workspace's Cloudflare connection
           - the site built and deployed on stage and prod, its smoke green
           - the home page answers on both workers.dev URLs
     - id: m03
@@ -346,16 +376,32 @@ hooks:
       with:
         kind: task
         epic: "{{ .inputs.epicSlug }}"
-        milestone: 01-product
-        name: "Build the site in one landing"
+        milestone: 01-scaffold
+        name: "Land the site's code"
         brief: >-
           Create {{ .inputs.githuborg }}/{{ .inputs.reponame }} and land the
           whole site as one pull request — intent, CI, tooling, the identity,
-          the site and its tests, branded as {{ .inputs.productname }} — then
-          see the convergence build it with Cloudflare's Vite plugin and
-          deploy it to stage and prod, smoke-tested over HTTP.
+          the site and its tests, branded as {{ .inputs.productname }} — with
+          its deploy lanes parked, so CI on main builds nothing it cannot
+          deploy and deploys nothing. GitHub only: no provider is needed yet.
         prefix: BASE
-        contract: .baseline/tasks/01-product.TaskContract.yaml
+        contract: .baseline/tasks/01-scaffold.TaskContract.yaml
+    - id: t02
+      uses: orun.task/ensure@v1
+      background: true
+      with:
+        kind: task
+        epic: "{{ .inputs.epicSlug }}"
+        milestone: 02-live
+        name: "Take the site live"
+        brief: >-
+          Bind the site to its Cloudflare account's workers.dev subdomain, mint
+          the deploy credentials from the workspace's Cloudflare connection,
+          put the deploy lanes back, and see the convergence build the site
+          with Cloudflare's Vite plugin and deploy it to stage and prod,
+          smoke-tested over HTTP.
+        prefix: BASE
+        contract: .baseline/tasks/02-live.TaskContract.yaml
     - id: t03
       uses: orun.task/ensure@v1
       background: true
@@ -382,67 +428,61 @@ hooks:
 # the task plane's milestones carry. A dependency may never point forward
 # across a phase boundary; orun refuses the blueprint if one does.
 #
-# ONE LANDING BUILDS THE SITE (cirrus-baseline baseline-v22's shape). A landing
-# has a fixed cost however small it is — place, open a PR, wait for its
-# checks, merge, wait for the convergence to start — and the bootstrap used to
-# pay it three times: the scaffold, the site, the record. Nothing in the
-# scaffold/site split was order the plan could not carry itself: the site's
-# build reads the tooling from the same tree, and the convergence on main is
-# what deploys it either way. So 01-product places the whole tree, brands it
-# and lands it as one pull request, and its convergence deploys the site to
-# stage and prod. 03-docs stays a landing of its own because it records what
-# went live and puts back the two bootstrap deferrals. The numbering keeps its
-# gap so the names stay the identities the task plane and `--phase` use.
+# TWO STAGES (saas-orun-work WA5; blueprint.yaml's `spec.stages`). The build
+# splits where its needs change:
 #
-# One phase places NO modules: `03-docs` is hooks only. It is a phase because
-# it is a separately landable unit with its own task and its own PR.
+#   SCAFFOLD — 01-scaffold, GitHub only. The whole tree placed, branded and
+#     landed as one pull request, the repository created and linked — with
+#     the deploy lanes parked (tooling/bootstrap/deploys.mjs), so the merge's
+#     CI on main plans dev's verify lane and nothing else: green, and nothing
+#     deployed. An app with no Cloudflare connection stops here
+#     (`--until 01-scaffold`, the platform's `until: scaffold`) and is CODE
+#     ONLY: its repository, its CI and its pull requests' verify lanes all
+#     work; nothing runs anywhere.
+#   LIVE — 02-live, Cloudflare. The workers.dev subdomain bound (a late-bound
+#     input), the deploy lanes put back, the deploy credentials minted, one
+#     landing whose convergence deploys the site to stage and prod, watched
+#     to green and probed. A build with a connection runs it straight after
+#     the scaffold; a code-only app runs it later (`--resume`, which finds
+#     01-scaffold placed and runs what follows).
+#
+# A FULL BUILD ENDS EXACTLY WHERE THE ONE-LANDING SHAPE DID (baseline-v1's
+# 01-product): the same tree on main, live on stage and prod, recorded, its
+# gates restored. It pays for one more landing — the scaffold's — and nothing
+# else: the scaffold's merge deploys nothing, so no convergence is waited on
+# twice, and the live landing's convergence is the one 01-product watched.
+#
+# Only 01-scaffold places modules: 02-live and 03-docs are hooks only. Each
+# is a phase because it is a separately landable unit with its own task and
+# its own PR. A hook-only phase derives as `unknown` (the
+# tree cannot answer for a landing or a deployment), so `--resume` always
+# runs it again — every hook in both is idempotent — and no phase may
+# REQUIRE one: both require 01-scaffold, the phase whose files say it ran.
 phases:
-  - name: 01-product
-    title: The site, built in one landing
-    description: The whole tree — manifests, tooling, CI, the identity and the site — branded, landed as one pull request, and deployed to stage and prod by one convergence.
-    # An estimate, not a measurement of this shape: a minute under the 4 it
-    # was, for what v2.88.0 takes out of the wait — the task set-up in the
-    # background, the landing checked here instead of by a runner's `plan`,
-    # the watch reading every 5 s instead of 40 (about a minute on
-    # turso-starter's measured build). The rest is the merge's convergence:
-    # the site's Vite build, deploy and smoke, stage and prod side by side.
-    expectedMinutes: 3
+  - name: 01-scaffold
+    title: The site's code, landed
+    description: The whole tree — manifests, tooling, CI, the identity and the site — branded and landed as one pull request in a new repository, its deploy lanes parked, so CI on main is green and deploys nothing. Needs GitHub only.
+    # An estimate, not a measurement: the placement and the rebrand, the
+    # repository created and linked, the task found, the commit checked here
+    # and merged. Nothing is built or waited on: the merge's CI plans a verify
+    # lane and deploys nothing, and nothing watches it.
+    expectedMinutes: 1
     narrate:
-      start:  "Creating the repository and landing the whole site in one pull request — intent, CI, tooling, the welcome page, the server-function todos, the API route and the SSR demos. Then one convergence builds it with Cloudflare's Vite plugin and deploys it to stage and prod side by side. Usually about {{ .meta.expectedMinutes }} minutes."
-      await:  "The site is building and deploying on both environments. A first deploy waits on its workers.dev route; nothing is stuck."
-      done:   "{{ .inputs.reponame }} is live on stage and prod — {{ .meta.files }} files on main, branded as {{ .inputs.productname }}. That took {{ .meta.elapsed }}."
-      failed: "The site did not come up. The failing lane above names the step — the build, the deploy or the smoke — and a provider error is in its log."
+      start:  "Creating the repository and landing the whole site in one pull request — intent, CI, tooling, the welcome page, the server-function todos, the API route and the SSR demos — with its deploy lanes parked until the site has somewhere to deploy to. Usually about {{ .meta.expectedMinutes }} minute."
+      done:   "{{ .inputs.reponame }}'s code is on main — {{ .meta.files }} files, branded as {{ .inputs.productname }}. Its CI checks every change and deploys nothing yet. That took {{ .meta.elapsed }}."
+      failed: "The site's code did not land. The step above names what stopped it — the rebrand, the repository, its link to the workspace, or the landing's own check — and nothing was merged."
     modules: [ai-deployment, ai-operations, discovery-roots, github-workflows, rebrand-values, root-gitignore, root-intent, root-package-json, root-pnpm-lock, root-pnpm-workspace, root-readme, root-turbo, tooling-eslint, tooling-tsconfig, tooling-wire, vscode, web]
-    # THE PLATFORM MUST BE ABLE TO SEE THE REPOSITORY BEFORE IT EXISTS. Every
-    # phase lands a pull request that files under its task, and the platform
-    # learns of a PR only through the GitHub App installation on the account
-    # that OWNS the repository. So the owner's connection is asked for here,
-    # before a repository is created, and waited for like any other consent.
-    # And the Cloudflare connection, which the deploy credentials below are
-    # minted from — asked for here too, since this phase is the one that
-    # deploys. `requires.probe` asks reality what a lock file cannot: are both
-    # connections live right now?
-    requires:
-      probe:
-        - id: providers
-          uses: orun.doctor/check@v1
-          with:
-            providers: [github, cloudflare]
-            githubOwner: "{{ .inputs.githuborg }}"
-            waitSeconds: 600
-            pollSeconds: 20
+    # GITHUB ONLY, AND NOT AS A CONNECTION ROW. The platform learns of a pull
+    # request only through the GitHub App installation on the account that
+    # OWNS the repository, and the proof of that is the repository's link to
+    # the workspace — which `link` below checks before anything lands. There
+    # is no `requires.probe` for GitHub: a connection probe reads the
+    # workspace's own connection list, and a repository orun.work keeps in its
+    # managed GitHub org is linked through a platform connection that list
+    # never shows, so the probe would wait out its ten minutes on a build that
+    # is ready. Cloudflare is 02-live's to ask for.
     hooks:
       post:
-        # A RE-RUN PHASE MUST HAVE SOMETHING TO LAND. A convergence can fail
-        # AFTER its PR merged, and the merge has already put every file this
-        # phase places on main; orun derives phase state from the tree, so a
-        # forced re-run lands an EMPTY diff while the site's CI plans
-        # `--changed`. So the phase rewrites ONE trailing marker line in each
-        # component.yaml its contract names — `# orun: redeploy <phase>
-        # <stamp>` — and the landing has a diff. The marker is a deploy
-        # trigger, not state: nothing reads it back.
-        - id: retouch
-          run: ["node", "{{ .baseline.dir }}/tooling/bootstrap/retouch.mjs", "--phase", "{{ .phase.name }}", "--affects", "{{ .baseline.dir }}/.baseline/tasks/01-product.TaskContract.yaml"]
         # The identity chain. rebrand.mjs enumerates the tree with
         # `git ls-files`, so the output has to be a git repository with a
         # populated index BEFORE it runs. `git add -A` only stages; the landing
@@ -456,8 +496,8 @@ phases:
         # Re-tenant the site. rebrand.mjs treats the orun state backend as
         # org-owned and leaves it alone, so intent.yaml would keep THIS
         # repository's `workspace:` — the site's CI would then claim another
-        # tenant's workspace on every remote op. Hook argv is not templated,
-        # so the value travels through .rebrand/values.json, which IS.
+        # tenant's workspace on every remote op. The value travels through
+        # .rebrand/values.json, which the identity chain already reads.
         - id: orun-workspace
           run:
             - node
@@ -486,19 +526,17 @@ phases:
         # every plan at two directories that do not exist.
         - id: work-tree
           run: ["node", "{{ .baseline.dir }}/tooling/bootstrap/work-tree.mjs", "--strip"]
-        # STAGE AND PROD DEPLOY SIDE BY SIDE UNTIL THE BOOTSTRAP IS DONE. The
-        # promotion gate makes prod wait out stage's deploy; during a
-        # bootstrap both are empty and the landing is watched to green, so it
-        # protects nothing and doubles the convergence. Deferred here,
-        # restored by 03-docs. tooling/bootstrap/promotion.mjs.
-        - id: promotion
-          run: ["node", "{{ .baseline.dir }}/tooling/bootstrap/promotion.mjs", "--defer"]
-        # DEV'S VERIFY LANES STAY OFF MAIN UNTIL THE BOOTSTRAP IS DONE, by the
-        # same mechanism: a third TanStack Start build on every merge proves nothing
-        # the baseline's own CI did not. Pull requests keep their dev lanes.
-        # tooling/bootstrap/dev-lanes.mjs.
-        - id: dev-lanes
-          run: ["node", "{{ .baseline.dir }}/tooling/bootstrap/dev-lanes.mjs", "--defer"]
+        # THE DEPLOY LANES ARE PARKED UNTIL THE SITE GOES LIVE. Stage and prod
+        # deploy on every merge to main; until 02-live has minted the deploy
+        # credentials there is nothing to deploy with, and a code-only app
+        # would go red on every merge. So their push-to-main activation is
+        # deferred here and restored by 02-live; dev keeps its own, so a merge
+        # still plans (orun refuses a push plan no environment answers) and
+        # runs dev's verify lane — the site built and dry-deployed, no
+        # credential. Pull requests keep every verify lane.
+        # tooling/bootstrap/deploys.mjs.
+        - id: deploys
+          run: ["node", "{{ .baseline.dir }}/tooling/bootstrap/deploys.mjs", "--defer"]
         # Re-stage so `git ls-files` and `rebrand --verify` see the rewritten tree.
         - id: git-restage
           run: ["git", "add", "-A"]
@@ -513,12 +551,13 @@ phases:
             name: "{{ .inputs.reponame }}"
             private: "{{ .inputs.repoPrivate }}"
         # THE REPOSITORY MUST BE THE WORKSPACE'S before anything lands in it,
-        # or the site's own CI cannot reach the platform: every convergence
-        # lane authenticates over GitHub OIDC, resolved through the repo link.
-        # `link` may be refused where the credential cannot write links (a
-        # workspace key) and the platform has linked the repository already,
-        # so it is best effort and `check` is the gate — an unlinked
-        # repository stops here, naming the fix, instead of in every lane.
+        # or the platform never sees its pull requests and the site's own CI
+        # cannot reach the platform: every lane authenticates over GitHub
+        # OIDC, resolved through the repo link. `link` may be refused where the
+        # credential cannot write links (a workspace key) and the platform has
+        # linked the repository already, so it is best effort and `check` is
+        # the gate — an unlinked repository stops here, naming the fix,
+        # instead of in every lane.
         - id: link
           run:
             - bash
@@ -532,22 +571,6 @@ phases:
             - link
             - "{{ .inputs.orunWorkspace }}"
             - "{{ .inputs.githuborg }}/{{ .inputs.reponame }}"
-        # The deploy credentials, brokered, in ONE hook (orun >= v2.87.0):
-        # `secrets` mints each key under its own scope template from the one
-        # connection the build is bound to, reading the connections and the
-        # existing secrets once and creating the missing keys side by side.
-        # `workers-deploy` is the site's deploy (Workers Scripts); the account
-        # id is a connection fact. The deploy lane binds both keys (the
-        # workers-assets composition's `secretBindings`). Keys that already
-        # exist are kept. After the link, before the landing whose convergence
-        # uses them.
-        - id: secrets
-          uses: orun.integrations/reconcile@v1
-          with:
-            provider: cloudflare
-            secrets:
-              - { key: CLOUDFLARE_API_TOKEN, template: workers-deploy }
-              - { key: CLOUDFLARE_ACCOUNT_ID, template: account-id }
         # The task this landing closes, and its key. The run-level list above
         # opens it in the background; this is the first hook that needs it,
         # so it is the one that waits for that list (orun >= v2.88.0) — every
@@ -558,9 +581,9 @@ phases:
             kind: task
             epic: "{{ .inputs.epicSlug }}"
             milestone: "{{ .phase.name }}"
-            name: "Build the site in one landing"
+            name: "Land the site's code"
             prefix: BASE
-            contract: .baseline/tasks/01-product.TaskContract.yaml
+            contract: .baseline/tasks/01-scaffold.TaskContract.yaml
         # THE SITE IS A PULL REQUEST THAT IS CHECKED, THEN MERGED — checked
         # HERE (`checks: local`, orun >= v2.88.0): `orun validate`, then
         # `orun plan` as the pull request and as the merge to main plan it,
@@ -569,17 +592,126 @@ phases:
         # resolve), plus the merge's own plan, in under a second instead of a
         # runner's ~25 s. A tree that fails is never pushed. The PR's CI still
         # runs (`plan` alone on a bootstrap branch, `orun/BASE-…`, ci.yml);
-        # nothing waits for it. The merge runs the site's build, deploy and
-        # smoke on main moments later, for real, and that convergence is what
-        # `await` watches to green.
+        # nothing waits for it. The merge's run on main plans dev's verify
+        # lane and deploys nothing, so there is no convergence to await: the
+        # phase is done when the code is on main.
         - id: land
           uses: orun.pr/land@v1
-          narrate: "The site is merged into main."
+          narrate: "The site's code is merged into main."
           with:
             task: "{{ .phase.hooks.task.outputs.key }}"
             epic: "{{ .inputs.epicSlug }}"
             branchSlug: "{{ .phase.name }}"
             title: "feat: {{ .inputs.productname }}, the whole site from the TanStack Start template"
+            checks: local
+
+  # Places nothing: it takes what 01-scaffold landed live. Its needs are the
+  # card's `requires.integrations` beyond GitHub — Cloudflare — so this is
+  # the first phase that asks for it.
+  - name: 02-live
+    title: The site, live on stage and prod
+    description: The site bound to its Cloudflare account's workers.dev subdomain, its deploy credentials minted, its deploy lanes put back, and one landing whose convergence deploys it to stage and prod, watched and probed.
+    # An estimate, not a measurement of this shape: what baseline-v1's
+    # 01-product took for its landing and convergence, less the placement now
+    # in 01-scaffold — the merge's convergence is the site's Vite build,
+    # deploy and smoke, stage and prod side by side, watched every 5 s.
+    expectedMinutes: 3
+    narrate:
+      start:  "Taking the site live: minting its deploy credentials from the Cloudflare connection and landing one pull request whose convergence builds the site with Cloudflare's Vite plugin and deploys it to stage and prod side by side. Usually about {{ .meta.expectedMinutes }} minutes."
+      await:  "The site is building and deploying on both environments. A first deploy waits on its workers.dev route; nothing is stuck."
+      done:   "{{ .inputs.reponame }} is live on stage and prod at {{ .inputs.subdomain }}.workers.dev. That took {{ .meta.elapsed }}."
+      failed: "The site did not come up. The failing step above names what stopped it — the subdomain, the credentials, or the convergence's build, deploy or smoke — and a provider error is in its log."
+    modules: []
+    # The code must be on main, and Cloudflare connected. `requires.probe`
+    # asks reality what a lock file cannot: is the connection live right now?
+    # Asked once before the run's first phase and, if it is not, again just
+    # before this one, waiting up to ten minutes for a consent — so a build
+    # that has no connection yet still lands its code first.
+    requires:
+      phases: [01-scaffold]
+      probe:
+        - id: providers
+          uses: orun.doctor/check@v1
+          with:
+            providers: [cloudflare]
+            waitSeconds: 600
+            pollSeconds: 20
+    hooks:
+      post:
+        # THE LATE-BOUND INPUT, BOUND. A code-only app's tree carries the
+        # placeholder subdomain; the run that goes live knows the account's
+        # real one and writes it where the placeholder stands — the
+        # component's smoke URL, intent.yaml's environment URLs, the operating
+        # contract, `.rebrand/values.json`. Refuses the placeholder itself:
+        # every URL below is built from it. A build that ran both stages at
+        # once already carries the real value, and this changes nothing.
+        # tooling/bootstrap/subdomain.mjs.
+        - id: subdomain
+          run: ["node", "{{ .baseline.dir }}/tooling/bootstrap/subdomain.mjs", "--bind", "{{ .inputs.subdomain }}"]
+        # The deploy lanes 01-scaffold parked: stage and prod deploy on a
+        # merge to main again, starting with this landing's.
+        - id: deploys
+          run: ["node", "{{ .baseline.dir }}/tooling/bootstrap/deploys.mjs", "--restore"]
+        # STAGE AND PROD DEPLOY SIDE BY SIDE UNTIL THE BOOTSTRAP IS DONE. The
+        # promotion gate makes prod wait out stage's deploy; during a
+        # bootstrap both are empty and the landing is watched to green, so it
+        # protects nothing and doubles the convergence. Deferred here,
+        # restored by 03-docs. tooling/bootstrap/promotion.mjs.
+        - id: promotion
+          run: ["node", "{{ .baseline.dir }}/tooling/bootstrap/promotion.mjs", "--defer"]
+        # DEV'S VERIFY LANES STAY OFF MAIN UNTIL THE BOOTSTRAP IS DONE, by the
+        # same mechanism: a third TanStack Start build beside the two deploys
+        # proves nothing the baseline's own CI did not, and competes with them
+        # for runners. Pull requests keep their dev lanes; 03-docs restores
+        # the push activation. tooling/bootstrap/dev-lanes.mjs.
+        - id: dev-lanes
+          run: ["node", "{{ .baseline.dir }}/tooling/bootstrap/dev-lanes.mjs", "--defer"]
+        # THIS LANDING MUST DEPLOY THE SITE, and a re-run must too. Restoring
+        # the lanes changes only intent.yaml's `environments`, which `orun
+        # plan --changed` maps to no component — and after a convergence
+        # that failed AFTER its PR merged, a forced re-run would land an
+        # EMPTY diff. So the phase rewrites ONE trailing marker line in each
+        # component.yaml its contract names — `# orun: redeploy <phase>
+        # <stamp>` — and the landing's merge plans those components on stage
+        # and prod. The marker is a deploy trigger, not state: nothing reads
+        # it back.
+        - id: retouch
+          run: ["node", "{{ .baseline.dir }}/tooling/bootstrap/retouch.mjs", "--phase", "{{ .phase.name }}", "--affects", "{{ .baseline.dir }}/.baseline/tasks/02-live.TaskContract.yaml"]
+        # The deploy credentials, brokered, in ONE hook (orun >= v2.87.0):
+        # `secrets` mints each key under its own scope template from the one
+        # connection the build is bound to, reading the connections and the
+        # existing secrets once and creating the missing keys side by side.
+        # `workers-deploy` is the site's deploy (Workers Scripts); the account
+        # id is a connection fact. The deploy lane binds both keys (the
+        # workers-assets composition's `secretBindings`). Keys that already
+        # exist are kept. Before the landing whose convergence uses them.
+        - id: secrets
+          uses: orun.integrations/reconcile@v1
+          with:
+            provider: cloudflare
+            secrets:
+              - { key: CLOUDFLARE_API_TOKEN, template: workers-deploy }
+              - { key: CLOUDFLARE_ACCOUNT_ID, template: account-id }
+        - id: task
+          uses: orun.task/ensure@v1
+          with:
+            kind: task
+            epic: "{{ .inputs.epicSlug }}"
+            milestone: "{{ .phase.name }}"
+            name: "Take the site live"
+            prefix: BASE
+            contract: .baseline/tasks/02-live.TaskContract.yaml
+        # Checked here and merged, as 01-scaffold's landing is. The merge runs
+        # the site's build, deploy and smoke on main moments later, for real,
+        # and that convergence is what `await` watches to green.
+        - id: land
+          uses: orun.pr/land@v1
+          narrate: "The site's deploy is merged into main."
+          with:
+            task: "{{ .phase.hooks.task.outputs.key }}"
+            epic: "{{ .inputs.epicSlug }}"
+            branchSlug: "{{ .phase.name }}"
+            title: "feat: {{ .inputs.productname }}, live on stage and prod"
             checks: local
       await:
         - id: converge
@@ -587,7 +719,8 @@ phases:
           narrate: "The site built, deployed and passed its smoke, and the convergence run came back green."
           with:
             # The run for the commit THIS landing merged — the branch's newest
-            # run, read the moment the merge returns, may be another push's.
+            # run, read the moment the merge returns, may be another push's
+            # (01-scaffold's merge, moments earlier, has a run of its own).
             sha: "{{ .phase.hooks.land.outputs.mergeSha }}"
             repo: "{{ .inputs.githuborg }}/{{ .inputs.reponame }}"
             resumeBudget: 3
@@ -603,7 +736,7 @@ phases:
               - "https://{{ .inputs.reponame }}-web-stage.{{ .inputs.subdomain }}.workers.dev"
               - "https://{{ .inputs.reponame }}-web-prod.{{ .inputs.subdomain }}.workers.dev"
 
-  # Places nothing. It records what 01-product built, from PROBED facts
+  # Places nothing. It records what 02-live deployed, from PROBED facts
   # rather than from what the blueprint intended — which is why it runs last.
   # Its render probes every URL as it writes the record, and this landing
   # redeploys nothing, so there is no probe after it to wait for.
@@ -618,11 +751,13 @@ phases:
       done:   "ai/context/deployment.md now records the live deployment, written from probed facts, and prod waits on stage again. {{ .meta.elapsed }}."
       failed: "The deployment record did not land. The site is still live; only the write-up is missing."
     modules: []
+    # 01-scaffold, not 02-live: a hook-only phase derives as `unknown`, and a
+    # requirement on one fails closed. `--resume` runs 02-live before this.
     requires:
-      phases: [01-product]
+      phases: [01-scaffold]
     hooks:
       post:
-        # THE SITE GOES LIVE WITH ITS PROMOTION GATE. 01-product deferred
+        # THE SITE GOES LIVE WITH ITS PROMOTION GATE. 02-live deferred
         # `prod.promotion.dependsOn: [stage]`; this, the last landing, puts it
         # back, and from here on a change reaches prod only after stage.
         # Restoring touches only intent.yaml's `environments` section, which
@@ -630,7 +765,7 @@ phases:
         # redeploys nothing.
         - id: promotion
           run: ["node", "{{ .baseline.dir }}/tooling/bootstrap/promotion.mjs", "--restore"]
-        # And dev verifies every merge to main again (01-product deferred it).
+        # And dev verifies every merge to main again (02-live deferred it).
         - id: dev-lanes
           run: ["node", "{{ .baseline.dir }}/tooling/bootstrap/dev-lanes.mjs", "--restore"]
         - id: render
@@ -644,7 +779,7 @@ phases:
             name: "Record the live deployment"
             prefix: BASE
             contract: .baseline/tasks/03-docs.TaskContract.yaml
-        # Checked here and merged, as 01-product's landing is; nothing here
+        # Checked here and merged, as the other landings are; nothing here
         # builds.
         - id: land
           uses: orun.pr/land@v1

@@ -13,15 +13,19 @@ Start 1.169, deployed as one Cloudflare Worker + Static Assets through
 Cloudflare's Vite plugin — TanStack Start's own Cloudflare target. The todos
 live in each visitor's own httpOnly cookie. Packaged as an Orun baseline:
 `orun new --blueprint repo-blueprint.yaml` builds a new site in its own
-repository and takes it to live on stage and prod in one landing
-(`01-product`), then records what went live (`03-docs`).
+repository in two stages — the code landed with GitHub alone (`01-scaffold`,
+its deploy lanes parked), then live on stage and prod with Cloudflare
+(`02-live`) — then records what went live (`03-docs`). A build with no
+Cloudflare connection stops after the scaffold (a code-only site) and goes
+live later; the card declares the split (`spec.stages`) for orun.work.
+On stage, the Worker lets orun.work's preview pane frame it.
 
 ## Release
 
 | | |
 |---|---|
-| Latest tag | `baseline-v1` (TS-3) |
-| Proven live | No. Everything short of the platform is proven offline in Baseline CI (risk TS-A). The card's 4 minutes is an estimate |
+| Latest tag | `baseline-v1` (TS-3); TS-4 — the two-stage build and stage framing — is on `main` for `baseline-v2` |
+| Proven live | No. Everything short of the platform is proven offline in Baseline CI (risk TS-A). The card's 5 minutes is an estimate |
 
 ## Where to read
 
@@ -35,5 +39,9 @@ repository and takes it to live on stage and prod in one landing
 
 ## Next
 
-1. Bootstrap one site from `baseline-v1` against a workspace and record its
-   timings in place of the estimate (closes TS-A).
+1. Cut `baseline-v2` and move the registry row to it (`tag`,
+   `expectedMinutes: 5`); the registry reads the card change as
+   `needs-review` (programme, stages, late-bound inputs).
+2. Bootstrap one site from it against a workspace — code only, then live —
+   and record its timings on stage in place of the estimate (closes TS-A;
+   orun.work offers the baseline to apps only after that measurement).

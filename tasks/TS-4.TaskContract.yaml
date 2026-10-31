@@ -1,0 +1,27 @@
+apiVersion: orun.io/v1
+kind: TaskContract
+metadata:
+  name: TS-4
+  title: "Scaffold, then live: the build splits at a declared stage"
+spec:
+  goal: A site's code lands with GitHub alone and deploys nothing until a later live stage, declared to the platform as spec.stages, with the stage Worker framable by orun.work (saas-orun-work WA5)
+  affects:
+    - blueprint.yaml
+    - repo-blueprint.yaml
+    - BOOTSTRAP.md
+    - README.md
+    - intent.yaml
+    - .baseline
+    - .github/workflows/baseline.yml
+    - ai/context
+    - docs/phases
+    - testing
+    - tooling/bootstrap
+    - apps/web
+    - specs/epics
+    - tasks
+  doneWhen:
+    - every Baseline CI tier is green, the code-only build and its later go-live included
+    - Orunbase's blueprint-manifest parser reads the card's stages and late-bound subdomain
+    - the stage Worker answers with frame-ancestors naming orun.work's origins, and prod with none
+  gates: []

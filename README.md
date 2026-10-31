@@ -29,12 +29,21 @@ orun new --blueprint repo-blueprint.yaml --out ~/sites/acme-notes --run-hooks --
 ```
 
 Or, once the platform's registry lists it, from the Orun console (Baselines →
-`tanstack-start` → Build). Two phases — `01-product` (the repository
-created, then the whole site in one pull request, deployed to stage and prod
-and smoke-tested) and `03-docs` (the live deployment recorded) — each landing
-one pull request in the new repository. **[BOOTSTRAP.md](BOOTSTRAP.md)** is
-the operator guide; [docs/phases/](docs/phases/README.md) has a page per
-phase.
+`tanstack-start` → Build), or from orun.work. Three phases, in two stages,
+each landing one pull request in the new repository:
+
+| stage | phase | needs | lands |
+|---|---|---|---|
+| scaffold | `01-scaffold` | GitHub | the repository created and linked, then the whole site in one pull request, its deploy lanes parked — CI on `main` is green and deploys nothing |
+| live | `02-live` | Cloudflare | the workers.dev subdomain bound, the deploy credentials minted, the lanes put back — deployed to stage and prod and smoke-tested |
+| | `03-docs` | — | the live deployment recorded, the promotion gate put back |
+
+A build with no Cloudflare connection stops after the scaffold
+(`--until 01-scaffold`) and the site is **code only**; a later build takes it
+live (`--resume` with the account's `subdomain`). The card declares the split
+(`blueprint.yaml` `spec.stages`) and the one input that waits for it
+(`subdomain`, `lateBound`). **[BOOTSTRAP.md](BOOTSTRAP.md)** is the operator
+guide; [docs/phases/](docs/phases/README.md) has a page per phase.
 
 The new repository receives the **site only** — the app and its tests, its
 CI, its tooling, a README of its own and its operating contract — renamed
@@ -47,10 +56,10 @@ repository's machinery ships.
 | The build document (modules, phases, hooks) | `repo-blueprint.yaml` |
 | This tree's identity, and the bootstrap's task contracts | `.baseline/` |
 | The rename engine | `tooling/rebrand/rebrand.mjs` |
-| The bootstrap's helpers (deferrals, redeploy marker, work-tree strip) | `tooling/bootstrap/` |
+| The bootstrap's helpers (deferrals — the deploy lanes, prod's gate, dev's lanes — the late-bound subdomain, redeploy marker, work-tree strip) | `tooling/bootstrap/` |
 | The deployment-record renderer | `hooks/render-deployment-docs.sh` |
 | The site's README and context pack | `.baseline/product/README.md`, `ai/context/` |
-| The baseline's tests: contract, leak, offline bootstrap, end to end | `testing/`, `.github/workflows/baseline.yml` |
+| The baseline's tests: contract, leak, offline bootstrap (full and code-only), end to end | `testing/`, `.github/workflows/baseline.yml` |
 | Cutting a `baseline-vN` tag | `.github/workflows/tag.yml` |
 
 ## What is here (the site)
@@ -63,7 +72,8 @@ repository's machinery ships.
 | The todo store: the visitor's list in one httpOnly cookie | `apps/web/src/data/todos.ts` |
 | The header and its navigation | `apps/web/src/components/Header.tsx` |
 | Vite plugins, Worker config, deploy contract | `apps/web/vite.config.ts`, `apps/web/wrangler.jsonc`, `apps/web/component.yaml` |
-| Tests (the site's name, the todo store) | `apps/web/src/**/*.test.ts` |
+| The Worker's entry: TanStack Start's handler, plus who may frame the site (on stage: orun.work's preview pane) | `apps/web/src/server.ts`, `apps/web/src/lib/framing.ts` |
+| Tests (the site's name, the todo store, the framing policy) | `apps/web/src/**/*.test.ts` |
 
 ## Getting started
 
@@ -90,9 +100,24 @@ while keeping the demo's point: a GET server function read in a loader, a
 POST one that changes what it reads. To share a list across devices, swap
 the cookie for a KV namespace.
 
+**Framing.** The stage Worker answers every page it renders with
+`Content-Security-Policy: frame-ancestors 'self'
+https://orun-agent-web-stage.oruncloud.workers.dev
+https://orun-agent-web-prod.oruncloud.workers.dev http://localhost:*` —
+orun.work's preview pane shows a site's stage deploy in an iframe, and
+`localhost` on any port is orun.work run for its development. Prod and dev
+send no policy, so they frame exactly as before. The list is a map per
+environment in `apps/web/src/lib/framing.ts`; change it there. The Worker
+knows its environment because each deploy lane exports `DEPLOY_ENV` to its
+build (`environmentBuildVar` in `component.yaml`, passed through by
+`apps/web/turbo.json`), and `vite.config.ts` writes it into the bundle; a
+local build or `vite dev` names none and sends no policy
+(`DEPLOY_ENV=stage pnpm build` builds the stage Worker).
+
 One Worker config, `apps/web/wrangler.jsonc`, serves both sides: the Vite
-plugin reads it (with the source entry, TanStack Start's
-`@tanstack/react-start/server-entry`, named in `vite.config.ts`), and it
+plugin reads it (with the source entry, `src/server.ts` — TanStack Start's
+`@tanstack/react-start/server-entry` with the framing policy — named in
+`vite.config.ts`), and it
 describes the BUILT Worker — `dist/server/index.js` and its chunks, uploaded
 as built, and `dist/client` as Static Assets — for the deploy lane's
 `wrangler deploy --config wrangler.jsonc`, which never reads the build's own
@@ -115,6 +140,6 @@ dry-run deploys of both upload the same modules.
 
 | Workflow | What it runs | Ships to a site |
 |---|---|---|
-| `ci.yml` | the Orun pipeline, and the only workflow a site carries: `orun plan --changed`, then one job per lane. A pull request runs the verify lanes (the site built and dry-deployed per environment; they do not typecheck, lint or run the tests), except the bootstrap's own landings (`orun/BASE-*`), where `plan` alone is the check; a merge deploys stage → prod. It plans nothing while `intent.yaml` names the placeholder workspace `ws_CHANGE_ME`, as this repository does. A manual run (Orunbase's Deploy button, or Run workflow on `main`) plans the environment and components it names under the push-to-main trigger, so they deploy as a merge deploys them | yes |
+| `ci.yml` | the Orun pipeline, and the only workflow a site carries: `orun plan --changed`, then one job per lane. A pull request runs the verify lanes (the site built and dry-deployed per environment; they do not typecheck, lint or run the tests), except the bootstrap's own landings (`orun/BASE-*`), where `plan` alone is the check; a merge deploys stage → prod (until a site goes live, its deploy lanes are parked and a merge verifies on dev and deploys nothing). It plans nothing while `intent.yaml` names the placeholder workspace `ws_CHANGE_ME`, as this repository does. A manual run (Orunbase's Deploy button, or Run workflow on `main`) plans the environment and components it names under the push-to-main trigger, so they deploy as a merge deploys them | yes |
 | `baseline.yml` | the baseline's own tiers: contract tests, the blueprint read by the pinned orun, the leak gate, the offline bootstrap, the site installed, type-checked, linted, tested, built, dry-deployed and served (`testing/e2e.test.sh`, before every tag) | no |
 | `tag.yml` | cuts a `baseline-vN` tag (manual) | no |

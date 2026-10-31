@@ -46,7 +46,10 @@
 #      (testing/lib/serverfn-payload.mjs) — the visitor's starter list, a
 #      todo added by the POST one and read back by the page and by the GET
 #      one with the cookie it set, an empty todo refused, a cross-origin post
-#      refused — and an unknown path's 404.
+#      refused — and an unknown path's 404. And, because the lane built it
+#      for STAGE (`DEPLOY_ENV`), every page it renders names who may frame
+#      it — orun.work's preview pane among them (src/lib/framing.ts); the
+#      static files, which never reach the Worker, carry nothing.
 #
 # What it cannot do is the platform's half: create the repository, mint the
 # brokered Cloudflare token, deploy for real and probe workers.dev. That is a
@@ -109,7 +112,7 @@ echo "── the offline bootstrap (testing/lib/bootstrap.sh)"
 tree="$scratch/$repo"
 bootstrap_offline "$root" "$tree" "$values" "$scratch/logs" > "$scratch/bootstrap.log" 2>&1 || {
   echo "FAIL: the offline bootstrap stopped" >&2; tail -40 "$scratch/bootstrap.log" >&2; exit 1; }
-echo "   2 phases placed and landed"
+echo "   3 phases placed and landed"
 
 # ── 1. the finished site ───────────────────────────────────────────────────
 echo "── the finished site: install, the fixture render, typecheck, lint, test, build"
@@ -117,9 +120,9 @@ checks "$tree" "$scratch/checks-site.log"
 
 # ── 2. the deploy lane's steps, for stage ──────────────────────────────────
 echo "── the stage lane: build-app, verify-build-output, deploy-dry-run"
-# The 01-product landing over the repository's empty first commit: every file
+# The 01-scaffold landing over the repository's empty first commit: every file
 # of the site changed, as on its pull request.
-s00="$(git -C "$tree" rev-parse HEAD~2)"; s01="$(git -C "$tree" rev-parse HEAD~1)"
+s00="$(git -C "$tree" rev-parse HEAD~3)"; s01="$(git -C "$tree" rev-parse HEAD~2)"
 (cd "$tree" && orun plan --intent intent.yaml --trigger github-pull-request --changed \
    --base "$s00" --head "$s01" --env stage --output "$scratch/plan.json") > "$scratch/plan.log" 2>&1 \
   || { echo "FAIL: orun plan" >&2; tail -15 "$scratch/plan.log" >&2; exit 1; }
@@ -160,6 +163,10 @@ else
   [ -d "$work/node_modules" ] && [ ! -L "$work/node_modules" ] \
     || { echo "FAIL: the job's install did not land inside its own tree" >&2; exit 1; }
 fi
+# The lane tells the build which environment it is for: the stage Worker's
+# framing policy depends on it (component.yaml's environmentBuildVar).
+grep -q '^export DEPLOY_ENV="stage"$' "$scratch/steps/build-app.sh" \
+  || { echo "FAIL: the stage lane's build-app does not export DEPLOY_ENV=stage" >&2; cat "$scratch/steps/build-app.sh" >&2; exit 1; }
 for step in build-app verify-build-output deploy-dry-run; do
   [ -f "$scratch/steps/$step.sh" ] || { echo "FAIL: the stage verify lane has no $step step" >&2; exit 1; }
   echo "   ▸ $step"
@@ -419,12 +426,32 @@ nf = body.decode()
 if s != 404 or "<p>Not Found</p>" not in nf or 'href="/demo/start/server-funcs"' not in nf:
     bad(f"/no-such-page answered {s} without the not-found page in the layout")
 
+# The stage Worker says who may frame it: orun.work's preview pane shows a
+# site's stage deploy in an iframe. Every response the Worker renders carries
+# the policy — a page, a 404, the API route, a server function; the static
+# files never reach the Worker and carry none.
+ORUN_WORK = ("https://orun-agent-web-stage.oruncloud.workers.dev",
+             "https://orun-agent-web-prod.oruncloud.workers.dev")
+for path in ("/", "/demo/start/server-funcs", "/demo/start/ssr/spa-mode", "/no-such-page", "/demo/api/names"):
+    _, h, _ = get(path)
+    csp = h.get_all("content-security-policy") or []
+    framing = [c for c in csp if c.startswith("frame-ancestors ")]
+    if len(framing) != 1 or not all(o in framing[0].split() for o in ORUN_WORK + ("'self'",)):
+        bad(f"{path} on stage does not let orun.work frame it: Content-Security-Policy {csp}")
+_, h, _ = serverfn("getTodos")
+if not any(c.startswith("frame-ancestors ") for c in h.get_all("content-security-policy") or []):
+    bad("a server function's answer from the stage Worker carries no framing policy")
+_, h, _ = get("/robots.txt")
+if h.get_all("content-security-policy"):
+    bad(f"/robots.txt, a static file, carries {h.get_all('content-security-policy')} — the Worker never saw it")
+print("     framing: every page the stage Worker renders lets orun.work's preview pane frame it")
+
 if problems:
     for p in problems:
         print(f"  ✕ {p}", file=sys.stderr)
     sys.exit(1)
 print("   /, the client build, the static files, the API route and its page, the three SSR modes, "
-      "the todos, a 404 — the site's own")
+      "the todos, a 404, the stage framing policy — the site's own")
 PY
 
 echo "e2e.test.sh: ok"

@@ -1,0 +1,19 @@
+# Task contract template for the 02-live landing. See 01-scaffold's header.
+#
+# The live stage: what 01-scaffold landed, deployed. `affects` names
+# COMPONENTS, by metadata.name: the phase's retouch hook reads this list to
+# decide which component.yaml files get the redeploy marker, so the deploy set
+# and the task plane's statement of the work are one list. gates: [] — the
+# main convergence is the gate the bootstrap watches, not one the plane
+# observes as a PR check.
+apiVersion: orun.io/v1
+kind: TaskContract
+spec:
+  goal: The site is bound to its Cloudflare account's workers.dev subdomain, its deploy credentials are minted from the workspace's connection, and one convergence builds it with Cloudflare's Vite plugin and deploys it to stage and prod
+  affects:
+    - web
+  doneWhen:
+    - no placeholder subdomain left in the site; CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID exist
+    - main convergence green (build, deploy and smoke on stage and prod)
+    - the home page answers on both workers.dev URLs
+  gates: []

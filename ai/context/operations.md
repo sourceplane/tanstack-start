@@ -67,6 +67,22 @@ Caveats that matter:
   redeploys nothing on its own. Land it with a change under `apps/web`.
 - A visitor's todos are theirs alone and live in their browser: clearing
   cookies clears the list, and nothing server-side can read or restore it.
+- **Code only until it goes live.** If `intent.yaml` carries
+  `# @deploys-deferred:…` markers under `stage` and `prod`, the site was
+  built before its Cloudflare account was connected: merges plan dev's verify
+  lane and deploy nothing, and a manual deploy of stage or prod is refused
+  (`environment … is not activated by trigger github-push-main`). The
+  build's live stage puts the triggers back, binds the account's workers.dev
+  subdomain and deploys; do not restore them by hand without the deploy
+  credentials it mints.
+- **Who may frame the site.** On stage, every response the Worker renders
+  carries `Content-Security-Policy: frame-ancestors …` naming the origins
+  that may show it in an iframe (orun.work's preview pane among them); prod
+  and dev send none. The list is `apps/web/src/lib/framing.ts`, one entry
+  per environment. The Worker knows its environment from `DEPLOY_ENV`,
+  which each deploy lane exports to its build (`environmentBuildVar` in
+  `apps/web/component.yaml`): a build by hand names none and sends no
+  policy.
 
 ## Secrets model
 
@@ -99,6 +115,7 @@ orun integrations list --org <ws> --json && orun cloud check --org <ws>
 | deploy a change | merge to `main`; watch the run; failed lanes → `gh run rerun --failed` |
 | deploy by hand | Orunbase's Deploy button, or `gh workflow run ci.yml --ref main -f environment=<env> [-f component=<a,b>]` — the named components (blank: every one) run in that environment as a merge runs them; started off `main` it is refused |
 | redeploy without a change | edit the last line of `apps/web/component.yaml` (`# orun: redeploy <reason> <stamp>`) and merge — it is a deploy trigger, nothing reads it |
+| change who may frame the site | edit `FRAME_ANCESTORS` in `apps/web/src/lib/framing.ts` (CSP source expressions, per environment) and merge; each environment sends it from its next deploy |
 | serve a custom domain | attach it to the Worker in Cloudflare (README, "Custom domain"), then replace the placeholder `tanstack-start.example.com` in `intent.yaml`'s `BASE_DOMAIN` (dev, stage and prod) with it; nothing else changes |
 | share todos across devices | swap the cookie in `apps/web/src/routes/demo/start.server-funcs.tsx` (`readTodos`, `setCookie`) for a KV namespace bound in `wrangler.jsonc` |
 | add a runtime secret | `orun secrets set <KEY> --org <ws> --env <env>` |
