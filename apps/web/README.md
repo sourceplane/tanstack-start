@@ -20,6 +20,7 @@ The site's name — every page's `<title>` — is in `src/lib/site.ts`.
 Who may show the site in a frame is in `src/lib/framing.ts`, per environment:
 on **stage**, every response the Worker renders carries
 `Content-Security-Policy: frame-ancestors 'self'
+https://orun.work https://stage.orun.work
 https://orun-agent-web-stage.oruncloud.workers.dev
 https://orun-agent-web-prod.oruncloud.workers.dev http://localhost:*`
 (orun.work's preview pane, and orun.work run locally); prod, dev and a local

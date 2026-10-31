@@ -24,7 +24,10 @@
 export const FRAME_ANCESTORS: Readonly<Record<string, readonly string[]>> = {
   stage: [
     "'self'",
-    // orun.work's preview pane, on its stage and prod deploys.
+    // orun.work's preview pane: its own domain (prod and stage), then the
+    // workers.dev origins the same deploys also answer on.
+    'https://orun.work',
+    'https://stage.orun.work',
     'https://orun-agent-web-stage.oruncloud.workers.dev',
     'https://orun-agent-web-prod.oruncloud.workers.dev',
     // orun.work run locally, for its development: any port.

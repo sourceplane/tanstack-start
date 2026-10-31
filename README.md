@@ -102,6 +102,7 @@ the cookie for a KV namespace.
 
 **Framing.** The stage Worker answers every page it renders with
 `Content-Security-Policy: frame-ancestors 'self'
+https://orun.work https://stage.orun.work
 https://orun-agent-web-stage.oruncloud.workers.dev
 https://orun-agent-web-prod.oruncloud.workers.dev http://localhost:*` —
 orun.work's preview pane shows a site's stage deploy in an iframe, and

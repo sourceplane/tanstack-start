@@ -5,7 +5,7 @@
 | TS0 — the spec | ✅ | TS-1 |
 | TS1 — TanStack Start on Workers | ✅ | TS-2 |
 | TS2 — a baseline | ✅ | TS-3, tagged `baseline-v1` |
-| TS3 — scaffold, then live | ✅ on `main` | TS-4, to be tagged `baseline-v2` |
+| TS3 — scaffold, then live | ✅ | TS-4, tagged `baseline-v2`; orun.work's domain in stage's framing list on `main` for `baseline-v3` |
 
 ## Departures from the upstream template
 

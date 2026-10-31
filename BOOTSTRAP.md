@@ -196,7 +196,8 @@ orun new --blueprint repo-blueprint.yaml \
   `src/routeTree.gen.ts` from them); the site's name is
   `apps/web/src/lib/site.ts`. Every merge to `main` redeploys.
 - **Framing**: the stage Worker sends `Content-Security-Policy:
-  frame-ancestors 'self' https://orun-agent-web-stage.oruncloud.workers.dev
+  frame-ancestors 'self' https://orun.work https://stage.orun.work
+  https://orun-agent-web-stage.oruncloud.workers.dev
   https://orun-agent-web-prod.oruncloud.workers.dev http://localhost:*`, so
   orun.work's preview pane (and orun.work run locally) can show the stage
   deploy in an iframe; prod and dev send no policy. The list is one map in
