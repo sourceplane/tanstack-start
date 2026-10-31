@@ -24,7 +24,7 @@ On stage, the Worker lets orun.work's preview pane frame it.
 
 | | |
 |---|---|
-| Latest tag | `baseline-v1` (TS-3); TS-4 — the two-stage build and stage framing — is on `main` for `baseline-v2` |
+| Latest tag | `baseline-v2` (TS-4: the two-stage build and stage framing); orun.work's domain in the framing list is on `main` for `baseline-v3` |
 | Proven live | No. Everything short of the platform is proven offline in Baseline CI (risk TS-A). The card's 5 minutes is an estimate |
 
 ## Where to read
@@ -39,9 +39,8 @@ On stage, the Worker lets orun.work's preview pane frame it.
 
 ## Next
 
-1. Cut `baseline-v2` and move the registry row to it (`tag`,
-   `expectedMinutes: 5`); the registry reads the card change as
-   `needs-review` (programme, stages, late-bound inputs).
+1. Cut `baseline-v3` (orun.work's domain, `orun.work` and
+   `stage.orun.work`, may frame stage) and move the registry row to it.
 2. Bootstrap one site from it against a workspace — code only, then live —
    and record its timings on stage in place of the estimate (closes TS-A;
    orun.work offers the baseline to apps only after that measurement).

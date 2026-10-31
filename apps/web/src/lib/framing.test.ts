@@ -4,6 +4,8 @@ import { DEPLOY_ENV, FRAME_ANCESTORS, frameAncestorsPolicy, withFramingPolicy } 
 
 // orun.work's preview pane frames a site's stage deploy, from these origins.
 const ORUN_WORK = [
+  'https://orun.work',
+  'https://stage.orun.work',
   'https://orun-agent-web-stage.oruncloud.workers.dev',
   'https://orun-agent-web-prod.oruncloud.workers.dev',
 ]

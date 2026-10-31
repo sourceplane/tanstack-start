@@ -85,6 +85,7 @@ where a placeholder stood in for it, and deploys.
 
 **Who may frame the site.** On stage, every page the Worker renders says
 who may show it in a frame: `Content-Security-Policy: frame-ancestors 'self'
+https://orun.work https://stage.orun.work
 https://orun-agent-web-stage.oruncloud.workers.dev
 https://orun-agent-web-prod.oruncloud.workers.dev http://localhost:*` —
 orun.work's preview pane, which shows the stage deploy, and orun.work run

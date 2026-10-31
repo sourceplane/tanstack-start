@@ -430,7 +430,8 @@ if s != 404 or "<p>Not Found</p>" not in nf or 'href="/demo/start/server-funcs"'
 # site's stage deploy in an iframe. Every response the Worker renders carries
 # the policy — a page, a 404, the API route, a server function; the static
 # files never reach the Worker and carry none.
-ORUN_WORK = ("https://orun-agent-web-stage.oruncloud.workers.dev",
+ORUN_WORK = ("https://orun.work", "https://stage.orun.work",
+             "https://orun-agent-web-stage.oruncloud.workers.dev",
              "https://orun-agent-web-prod.oruncloud.workers.dev")
 for path in ("/", "/demo/start/server-funcs", "/demo/start/ssr/spa-mode", "/no-such-page", "/demo/api/names"):
     _, h, _ = get(path)
