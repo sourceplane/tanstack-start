@@ -9,8 +9,13 @@
 # at landing time, live, with nothing in this repository having looked wrong.
 # Moving one is a deliberate change, argued in the diff that edits both places.
 #
-# ONE LANDING BUILDS THE SITE (SK-5, cirrus-baseline baseline-v22's shape):
-# 01-product places every module, and 03-docs only records.
+# ONE LANDING PLACES THE SITE (SK-5, cirrus-baseline baseline-v22's shape),
+# AND THE BUILD SPLITS AT A DECLARED STAGE (saas-orun-work WA5): 01-scaffold
+# places every module and lands them with GitHub alone, its deploy lanes
+# parked; 02-live binds the late-bound subdomain, puts the lanes back, mints
+# the Cloudflare credentials and watches the one convergence that deploys;
+# 03-docs only records. blueprint.yaml's `spec.stages` names the two stages,
+# and the stage rules below hold each to what it may need.
 #
 # And the shape that keeps a bootstrap fast (orun >= v2.88.0, turso-starter
 # baseline-v8's): the run-level task set-up runs in the background, each
@@ -47,29 +52,32 @@ if not phases:
 PARTITION = {
     # One deployable component, `web`: the site's tests run inside it
     # (apps/web's vitest), so there is no test package to place beside it.
-    "01-product": ["ai-deployment", "ai-operations", "discovery-roots", "github-workflows",
-                   "rebrand-values", "root-gitignore", "root-intent",
-                   "root-package-json", "root-pnpm-lock",
-                   "root-pnpm-workspace", "root-readme", "root-turbo", "tooling-eslint",
-                   "tooling-tsconfig", "tooling-wire", "vscode", "web"],
+    "01-scaffold": ["ai-deployment", "ai-operations", "discovery-roots", "github-workflows",
+                    "rebrand-values", "root-gitignore", "root-intent",
+                    "root-package-json", "root-pnpm-lock",
+                    "root-pnpm-workspace", "root-readme", "root-turbo", "tooling-eslint",
+                    "tooling-tsconfig", "tooling-wire", "vscode", "web"],
+    "02-live": [],
     "03-docs": [],
 }
-HOOK_ONLY = {"03-docs"}
+HOOK_ONLY = {"02-live", "03-docs"}
 # The phases that DEPLOY, and so must give a re-run something to land.
-DEPLOYS = {"01-product"}
-# Each phase's pre, post and await hooks, in order — the one-landing recipe.
-# The brokered keys are one `secrets` reconcile. No phase has a `pre` hook:
-# the task is found in `post`, just before the landing, so that everything
-# before it runs beside the background task set-up. 03-docs awaits nothing:
-# its render probes as it writes, and its landing redeploys nothing.
-PRE = {"01-product": [], "03-docs": []}
+DEPLOYS = {"02-live"}
+# Each phase's pre, post and await hooks, in order. The brokered keys are one
+# `secrets` reconcile, in the live stage. No phase has a `pre` hook: the task
+# is found in `post`, just before the landing, so that everything before it
+# runs beside the background task set-up. 01-scaffold awaits nothing (its
+# merge deploys nothing), nor does 03-docs (its render probes as it writes,
+# and its landing redeploys nothing).
+PRE = {"01-scaffold": [], "02-live": [], "03-docs": []}
 POST = {
-    "01-product": ["retouch", "git-init", "git-stage", "rebrand", "orun-workspace", "work-tree",
-                   "promotion", "dev-lanes", "git-restage", "rebrand-verify",
-                   "repo", "link", "secrets", "task", "land"],
+    "01-scaffold": ["git-init", "git-stage", "rebrand", "orun-workspace", "work-tree",
+                    "deploys", "git-restage", "rebrand-verify", "repo", "link", "task", "land"],
+    "02-live": ["subdomain", "deploys", "promotion", "dev-lanes", "retouch",
+                "secrets", "task", "land"],
     "03-docs": ["promotion", "dev-lanes", "render", "task", "land"],
 }
-AWAIT = {"01-product": ["converge", "verify"], "03-docs": []}
+AWAIT = {"01-scaffold": [], "02-live": ["converge", "verify"], "03-docs": []}
 
 by_name = {p["name"]: p for p in phases}
 names = [p["name"] for p in phases]
@@ -167,6 +175,122 @@ for p in phases:
         for h in hooks_of(p):
             if (h.get("uses") or "").startswith(("orun.integrations/reconcile@", "orun.run/watch@")):
                 bad(f"phase {p['name']} deploys nothing and runs {h['uses']} ({h.get('id')})")
+
+# ── EVERY DEFERRAL IS PUT BACK ────────────────────────────────────────────
+# promotion.mjs, dev-lanes.mjs and deploys.mjs each park something in the
+# site's intent.yaml for the bootstrap's sake. In phase order, each `--restore`
+# must follow a `--defer`, and the last phase must leave nothing parked: a
+# finished site deploys on every merge, prod after stage, dev verifying.
+def tool_runs(p):
+    for h in ((p.get("hooks") or {}).get("post") or []):
+        argv = h.get("run") or []
+        for tool in ("promotion", "dev-lanes", "deploys"):
+            if any(a.endswith(f"tooling/bootstrap/{tool}.mjs") for a in argv):
+                for mode in ("--defer", "--restore"):
+                    if mode in argv:
+                        yield tool, mode
+for tool in ("promotion", "dev-lanes", "deploys"):
+    state, seen = "active", []
+    for p in phases:
+        for t, mode in tool_runs(p):
+            if t != tool:
+                continue
+            seen.append(f"{p['name']} {mode}")
+            if mode == "--restore" and state != "deferred":
+                bad(f"{p['name']} restores {tool}.mjs, which nothing before it deferred")
+            state = "deferred" if mode == "--defer" else "active"
+    if state != "active":
+        bad(f"{tool}.mjs is deferred and never restored ({', '.join(seen)}) — the finished site "
+            f"would keep the bootstrap's shortcut")
+
+# ── THE STAGES (saas-orun-work WA5, blueprint.yaml `spec.stages`) ─────────
+# SCAFFOLD needs GitHub only: no phase up to and including it may mint a
+# credential, watch a convergence, probe a URL, ask for a provider other than
+# github, or read a late-bound input (a code-only build does not have one);
+# and it must park the deploy lanes before it lands, so main's CI deploys
+# nothing. LIVE needs the card's `requires.integrations`: it asks for them,
+# binds every late-bound input before it lands, puts the deploy lanes back,
+# and deploys.
+card = yaml.safe_load((root / "blueprint.yaml").read_text())
+cspec = (card or {}).get("spec") or {}
+stages = cspec.get("stages") or {}
+late = {f.get("key") for f in cspec.get("inputs") or [] if f.get("lateBound") is True}
+needs = [i for i in ((cspec.get("requires") or {}).get("integrations") or []) if i != "github"]
+def expressions(p):
+    """Every templated string a phase renders: argv, `with:`, narration, probes."""
+    out = []
+    def walk(v):
+        if isinstance(v, str):
+            out.append(v)
+        elif isinstance(v, dict):
+            for x in v.values():
+                walk(x)
+        elif isinstance(v, list):
+            for x in v:
+                walk(x)
+    walk(p.get("hooks") or {})
+    walk(p.get("narrate") or {})
+    walk(((p.get("requires") or {}).get("probe")) or [])
+    return out
+def post_ids(p):
+    return [h.get("id") for h in ((p.get("hooks") or {}).get("post") or [])]
+def runs(p, tool, mode):
+    """The id of the post hook that runs tooling/bootstrap/<tool> <mode>, or None."""
+    for h in ((p.get("hooks") or {}).get("post") or []):
+        argv = h.get("run") or []
+        if any(a.endswith(f"tooling/bootstrap/{tool}") for a in argv) and mode in argv:
+            return h.get("id")
+    return None
+if not stages:
+    bad("blueprint.yaml declares no spec.stages — the stage rules have nothing to hold")
+else:
+    sc, lv = stages.get("scaffold"), stages.get("live")
+    if sc not in names or lv not in names:
+        bad(f"spec.stages names {sc} and {lv}; the phases are {names}")
+    else:
+        for p in phases[: names.index(sc) + 1]:
+            for h in hooks_of(p) + list(((p.get("requires") or {}).get("probe")) or []):
+                u = h.get("uses") or ""
+                if u.startswith(("orun.integrations/reconcile@", "orun.run/watch@", "orun.http/probe@")):
+                    bad(f"{p['name']} is in the scaffold stage and runs {u} ({h.get('id')}) — "
+                        f"scaffold needs GitHub only")
+                if u.startswith("orun.doctor/check@"):
+                    others = [x for x in ((h.get("with") or {}).get("providers") or []) if x != "github"]
+                    if others:
+                        bad(f"{p['name']} is in the scaffold stage and asks for {others} — "
+                            f"scaffold needs GitHub only")
+            for text in expressions(p):
+                for key in sorted(late):
+                    if re.search(rf"\.inputs\.{key}\b", text):
+                        bad(f"{p['name']} is in the scaffold stage and reads the late-bound input "
+                            f"{key} — a code-only build runs it without one")
+        scp, lvp = by_name[sc], by_name[lv]
+        if names.index(sc) >= names.index(lv):
+            bad(f"scaffold {sc} does not run before live {lv}")
+        defer = runs(scp, "deploys.mjs", "--defer")
+        if not defer or post_ids(scp).index(defer) > post_ids(scp).index("land"):
+            bad(f"{sc} does not park the deploy lanes (deploys.mjs --defer) before it lands — "
+                f"main's CI would deploy without credentials")
+        if lv not in DEPLOYS:
+            bad(f"the live stage {lv} is not a deploying phase")
+        restore = runs(lvp, "deploys.mjs", "--restore")
+        if not restore or post_ids(lvp).index(restore) > post_ids(lvp).index("land"):
+            bad(f"{lv} does not put the deploy lanes back (deploys.mjs --restore) before it lands")
+        asked = set()
+        for h in ((lvp.get("requires") or {}).get("probe")) or []:
+            if (h.get("uses") or "").startswith("orun.doctor/check@"):
+                asked |= set((h.get("with") or {}).get("providers") or [])
+        for need in needs:
+            if need not in asked:
+                bad(f"the live stage {lv} does not ask for {need} (requires.probe), which the card "
+                    f"requires — it would mint and deploy without checking the connection")
+        for key in sorted(late):
+            binds = [h.get("id") for h in ((lvp.get("hooks") or {}).get("post") or [])
+                     if (h.get("run") and "--bind" in h["run"]
+                         and any(f"{{{{ .inputs.{key} }}}}" == a for a in h["run"]))]
+            if not binds or post_ids(lvp).index(binds[0]) > post_ids(lvp).index("land"):
+                bad(f"the live stage {lv} does not bind the late-bound input {key} "
+                    f"(a `--bind \"{{{{ .inputs.{key} }}}}\"` hook) before it lands")
 
 # ── THE FAST SHAPE (orun >= v2.88.0) ──────────────────────────────────────
 # The run-level list is the task set-up, all of it in the background: the
@@ -332,6 +456,8 @@ placed_n = sum(len(p.get("modules") or []) for p in phases)
 narrated = sum(len(p.get("narrate") or {}) for p in phases)
 narrated += sum(1 for p in phases for h in hooks_of(p) if h.get("narrate"))
 print(f"   {len(phases)} phases, {placed_n} modules, {len(HOOK_ONLY)} hook-only — in execution order")
+print(f"   stages: scaffold {stages.get('scaffold')} (GitHub only, deploy lanes parked), "
+      f"live {stages.get('live')} ({', '.join(needs)}; binds {', '.join(sorted(late)) or 'nothing'})")
 print(f"   {narrated} authored narration lines, every reference resolving")
 PY
 

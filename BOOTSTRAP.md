@@ -1,52 +1,74 @@
 # BOOTSTRAP — a new site from this baseline, in phases
 
 How to go from **nothing** to a **TanStack Start site live on stage and prod,
-documented**, with ONE provider consent.
+documented**, with ONE provider consent — or, with no provider at all yet, to
+the site's **code**, in its own repository, ready to go live later.
 
 There is one artifact: **`repo-blueprint.yaml`**. It declares what to place,
 in what order, what each phase needs first, and what to say while it runs.
 `orun new` is the whole runtime — the phases below are its `--phase` names,
 not separate workflows. The console card the platform renders is
 **`blueprint.yaml`**; it names the build document and states the inputs, the
-brokered secrets and the programme, and `testing/manifest.test.sh` holds it
-to what the build document does.
+brokered secrets, the programme and the two stages a build may stop between,
+and `testing/manifest.test.sh` holds it to what the build document does.
 
-Target wall-clock: **about four minutes** — an estimate summed from the
-phases (3 + 1) until a bootstrap measures it. The shape: the task set-up in
-the background while ONE landing is placed, branded and checked in the box
-(`orun validate` and `orun plan`, no runner waited for), one TanStack Start
-build per environment (seconds, not minutes — the long poles are the
-installs, the runners and a first deploy's workers.dev route), stage and prod
-deployed side by side, then a short docs landing, checked the same way, that
-restores the promotion gate. It is unmeasured: no live bootstrap of this
-baseline has run yet. The sibling site baselines measured 7m07s–8m43s from
-the console's Build over three landings; `01-product` dropped one landing and
-the Checks waits (cirrus-baseline baseline-v22's shape), and orun v2.88.0's
+**Two stages** (`blueprint.yaml` `spec.stages`): the **scaffold**,
+`01-scaffold`, needs GitHub only — the whole site placed, branded and landed
+in a new repository, its deploy lanes parked so CI on `main` is green and
+deploys nothing; the **live** stage, `02-live`, needs Cloudflare — the
+workers.dev subdomain bound, the deploy credentials minted, the lanes put
+back, one landing deployed to stage and prod, watched and probed. Then
+`03-docs` records it. A build runs all three unless told to stop after the
+scaffold, which is what an account with no Cloudflare connection gets: a
+**code-only** site.
+
+Target wall-clock: **about five minutes** for a full build — an estimate
+summed from the phases (1 + 3 + 1) until a bootstrap measures it. The shape:
+the task set-up in the background while the scaffold's landing is placed,
+branded and checked in the box (`orun validate` and `orun plan`, no runner
+waited for) and merged with nothing to deploy; then the live landing, whose
+merge builds the site once per environment (seconds, not minutes — the long
+poles are the installs, the runners and a first deploy's workers.dev route)
+and deploys stage and prod side by side; then a short docs landing, checked
+the same way, that restores the promotion gate. It is unmeasured: no live
+bootstrap of this baseline has run yet. The sibling site baselines measured
+7m07s–8m43s from the console's Build over three landings; the one-landing
+shape this replaced (`baseline-v1`'s `01-product`, cirrus-baseline
+baseline-v22's) dropped a landing and the Checks waits, and orun v2.88.0's
 fast shape took about a minute out of turso-starter's measured build — the
-same minute is assumed here.
+same minute is assumed here. The split pays for one landing back (the
+scaffold's: about a minute) and nothing else: its merge deploys nothing, so
+no convergence is waited on twice.
 
 ## 0. What you need
 
 - GitHub org access (repository creation) and a machine with `git`, `node`
   (≥ 22), `pnpm` (10.12.1), `python3` with PyYAML, `curl`, and the `orun`
   CLI **≥ v2.88.0** — the floor for RUNNING the bootstrap (the phase overlay,
-  landings that commit per phase, `githubOwner` on the doctor probe, a probe
-  deferred for a project not yet created, `from: workspace`, the deploy
-  credentials minted in one `secrets` reconcile, the task set-up run in the
-  background (`background: true`), and landings checked in the box before
-  they merge (`checks: local`)). The site's own `ci.yml` pins its lanes
-  separately (v2.78.4).
-- A Cloudflare account (the free plan is enough for one Worker with static
-  assets) and its **Account API token** with Workers Scripts Write (the
-  console's Connect recipe lists the exact permission groups). It is the ONLY
-  provider credential this baseline needs.
+  landings that commit per phase, a probe deferred until the phase that
+  needs it, `from: workspace`, the deploy credentials minted in one
+  `secrets` reconcile, the task set-up run in the background
+  (`background: true`), and landings checked in the box before they merge
+  (`checks: local`)). A code-only site taken live **in the container that
+  built its scaffold** also needs the orun that reads `lateBound` (v2.90.0):
+  older ones refuse the real subdomain as an input conflict with the
+  placeholder they recorded (a fresh container has no record, and works on
+  the floor). The site's own `ci.yml` pins its lanes separately (v2.78.4).
+- For the live stage: a Cloudflare account (the free plan is enough for one
+  Worker with static assets) and its **Account API token** with Workers
+  Scripts Write (the console's Connect recipe lists the exact permission
+  groups). It is the ONLY provider credential this baseline needs, and the
+  scaffold stage does not need it at all.
 - An Orun Cloud workspace for the site — `orunWorkspace`, or the workspace
   the build runs in (ORUN_WORKSPACE) when that is unset — with an
   **admin-role API key** for headless runs (secret writes below admin are
   masked as `not_found`).
 - **The repository allow-listed in the workspace** (console → Settings → Git
-  repos), unless the credential can write links. `01-product`'s `link` step
-  stops and names the fix if it is not.
+  repos), unless the credential can write links. `01-scaffold`'s `link` step
+  stops and names the fix if it is not — it is the build's GitHub check: a
+  linked repository is one the platform sees through the GitHub App, and the
+  scaffold asks for no connection row (a repository in orun.work's managed
+  GitHub org has none in the workspace).
 
 ## 1. One command: `--resume`
 
@@ -71,6 +93,26 @@ with `orun baseline new --from bst_…`, never asks for it: the platform reads
 it from the workspace's Cloudflare connection, the same one the deploy token
 is minted from. Only a hand-run build like this one passes it.
 
+**Code only, then live.** With no Cloudflare account yet, stop after the
+scaffold and leave the subdomain out — it is **late-bound**, and the tree
+carries the placeholder `your-workers-subdomain` until the site goes live:
+
+```bash
+orun new --blueprint repo-blueprint.yaml \
+  --out ~/sites/acme-notes --run-hooks --until 01-scaffold \
+  --set reponame=acme-notes --set productname="Acme Notes" \
+  --set githuborg=acme-inc --set orunWorkspace=ws_XXXXXXXX
+```
+
+The repository, its CI (dev's verify lane on every merge; every lane on a
+pull request) and its pull requests all work; nothing deploys. To go live,
+run the same `--resume` command as above, with the account's `subdomain`:
+it finds `01-scaffold` placed and runs `02-live` and `03-docs`. (This is what
+the platform's go-live does: a resume with no stop.) Only a run that stops
+before the last phase may keep the placeholder — the orun that reads
+`lateBound` refuses any other before it writes a byte, and `02-live`'s
+`subdomain` hook refuses it on any orun.
+
 **`--run-hooks` is the difference between placing files and bootstrapping a
 site.** Without it `orun new` writes the tree and stops: no repository, no
 landing, no convergence watch, no probe. That is deliberate — it is what
@@ -84,16 +126,20 @@ phase whose files are present but branded derives as `drifted`, and
 
 ## 1b. Or phase by phase
 
-| phase | what it lands | verified by |
-|---|---|---|
-| `01-product` | the repository, created and linked; the brokered Cloudflare secrets; then the whole site in one PR — intent, CI, tooling, identity, `apps/web` (the site and its tests) | its commit validated and planned in the box (as the PR and as the merge), then merged; the convergence green (build, deploy, smoke) and both workers.dev URLs answering |
-| `03-docs` | `ai/context/deployment.md` from probed facts; prod's promotion gate and dev's push lanes restored | the render's own probes, recorded; the commit checked in the box and merged |
+| stage | phase | what it lands | verified by |
+|---|---|---|---|
+| scaffold | `01-scaffold` | the repository, created and linked; then the whole site in one PR — intent, CI, tooling, identity, `apps/web` (the site and its tests) — with stage's and prod's deploy lanes parked | its commit validated and planned in the box (as the PR and as the merge), then merged; main's run plans dev's verify lane and deploys nothing |
+| live | `02-live` | the workers.dev subdomain bound; the deploy lanes put back; the brokered Cloudflare secrets; one PR whose merge deploys | the convergence green (build, deploy, smoke) and both workers.dev URLs answering |
+| | `03-docs` | `ai/context/deployment.md` from probed facts; prod's promotion gate and dev's push lanes restored | the render's own probes, recorded; the commit checked in the box and merged |
 
 ```bash
 orun new --blueprint repo-blueprint.yaml --out ~/sites/acme-notes --run-hooks \
-  --phase 01-product --values ~/acme-notes.values.yaml
-# … then 03-docs
+  --until 01-scaffold --values ~/acme-notes.values.yaml
+# … then --phase 02-live (with the subdomain), then --phase 03-docs
 ```
+
+The first phase is selected with `--until`: it selects the same one phase, and
+it is the selection that may run without the late-bound subdomain.
 
 Every later phase reads the identity back from `.rebrand/values.json` in the
 placed tree, but the blueprint's **required** inputs — `reponame`,
@@ -109,7 +155,7 @@ The full guide, one page per phase: [docs/phases/README.md](docs/phases/README.m
 |---|---|
 | `--status` | derives and prints every phase's state and writes nothing. It parses the document, validates each hook against the action registry and compiles every template; it needs no credential and no network |
 | `--phase <name>` | places exactly that phase; its `requires.phases` still gates |
-| `--until <name>` | places every phase through that one and stops |
+| `--until <name>` | places every phase through that one and stops — `--until 01-scaffold` is a code-only build |
 
 What lands in the site is PRODUCT-ONLY: the app (its tests inside it), its
 CI, its tooling, its README and its two context pages. None of this
@@ -140,7 +186,7 @@ orun new --blueprint repo-blueprint.yaml \
 
 | requirement | detail |
 |---|---|
-| `GITHUB_TOKEN` | fine-grained PAT: **read** on this repository; on the SITE's repository **contents write**, **pull-requests write**, **actions read+write** (`orun.run/watch@v1` resumes runs with `gh run rerun`), **checks read**; **repository create** on the owner if `01-product` creates it (or pre-create it — supported) |
+| `GITHUB_TOKEN` | fine-grained PAT: **read** on this repository; on the SITE's repository **contents write**, **pull-requests write**, **actions read+write** (`orun.run/watch@v1` resumes runs with `gh run rerun`), **checks read**; **repository create** on the owner if `01-scaffold` creates it (or pre-create it — supported) |
 | classic token caveat | a classic PAT or gh OAuth token also needs the `workflow` scope to push `.github/workflows/` |
 | pinning | the clone's `--branch <tag>` pins everything: the blueprint, its modules and its hooks' scripts all come from that one commit |
 
@@ -149,6 +195,15 @@ orun new --blueprint repo-blueprint.yaml \
 - **Write**: the pages are `apps/web/src/routes/` (TanStack Router writes
   `src/routeTree.gen.ts` from them); the site's name is
   `apps/web/src/lib/site.ts`. Every merge to `main` redeploys.
+- **Framing**: the stage Worker sends `Content-Security-Policy:
+  frame-ancestors 'self' https://orun-agent-web-stage.oruncloud.workers.dev
+  https://orun-agent-web-prod.oruncloud.workers.dev http://localhost:*`, so
+  orun.work's preview pane (and orun.work run locally) can show the stage
+  deploy in an iframe; prod and dev send no policy. The list is one map in
+  `apps/web/src/lib/framing.ts`, per environment; each lane's build is told
+  its environment (`DEPLOY_ENV`, `environmentBuildVar` in
+  `apps/web/component.yaml`), so a change reaches an environment with its
+  next deploy.
 - **The todos**: each visitor's list lives in their own httpOnly cookie
   (`apps/web/src/data/todos.ts`), so the site depends on no third party. To
   share a list across devices, swap the cookie for a KV namespace.
@@ -165,7 +220,7 @@ orun new --blueprint repo-blueprint.yaml \
 each runs locally the same way:
 
 ```bash
-for t in manifest phases coverage rebrand retouch bootstrap-defer; do bash testing/$t.test.sh; done
+for t in manifest phases coverage rebrand retouch bootstrap-defer subdomain; do bash testing/$t.test.sh; done
 bash testing/leak.test.sh        # needs orun
 bash testing/placement.test.sh   # needs orun, node, pnpm: the offline bootstrap
 bash testing/e2e.test.sh         # + network for pnpm: the site built, dry-deployed and served
@@ -174,8 +229,11 @@ bash testing/e2e.test.sh         # + network for pnpm: the site built, dry-deplo
 The offline bootstrap (`testing/lib/bootstrap.sh`) places every phase in
 order and finishes each with the blueprint's OWN `run:` hooks — read out of
 `repo-blueprint.yaml`, not transcribed — so the rebrand, the re-tenant, the
-deferrals and their restore, the retouch marker and the deployment record
-all run exactly as a real bootstrap runs them. Only the
+deferrals and their restore, the subdomain bound, the retouch marker and the
+deployment record all run exactly as a real bootstrap runs them. The
+placement tier runs it twice: a full build, and a code-only one stopped after
+`01-scaffold` with no subdomain and taken live later — which must end on the
+full build's tree, byte for byte. Only the
 platform's typed actions (task, repo, link, land, watch, probe, reconcile)
 are stood in for, a landing becoming a commit.
 
@@ -199,17 +257,20 @@ at the tag and refuses the whole catalogue if it 404s.
 
 | Symptom | Cause → fix |
 |---|---|
-| `01-product` parks: `waiting for github for <org>` | the workspace's GitHub connection is to another account. Connect the App installation on `<org>` (console → Integrations → GitHub), then `--resume` |
-| `01-product` stops at `link` | the repository is not linked to the workspace and the credential cannot link it. Allow-list it (console → Settings → Git repos) and re-run the phase |
-| `01-product` waits on the `providers` probe, then stops | Cloudflare is not connected. Connect it (console → Integrations), then re-run the phase — the probe is a wait, not a failure |
+| `01-scaffold` stops at `link` | the repository is not linked to the workspace and the credential cannot link it — or the GitHub App is not installed on `githuborg`. Install it (console → Integrations → GitHub), allow-list the repo (console → Settings → Git repos) and re-run the phase |
+| `02-live` waits on the `providers` probe, then stops | Cloudflare is not connected. Connect it (console → Integrations), then re-run — the probe is a wait, not a failure, and the site's code is already on `main` |
+| A code-only site deploys nothing after a merge | expected: `intent.yaml` carries two `# @deploys-deferred:…` markers until `02-live` restores them. A manual deploy of stage or prod is refused (`environment stage is not activated by trigger github-push-main`) for the same reason |
+| `subdomain --bind: … was given the placeholder` (or orun: `Only a run --until stops before the build's last phase … may keep a placeholder`) | the run reaches `02-live` with no workers.dev subdomain. Pass `--set subdomain=…`, or stop with `--until 01-scaffold` |
+| `input conflict … subdomain: recorded "your-workers-subdomain", given "acme"` | a code-only site taken live in the container that built it, on an orun older than v2.90.0. Use v2.90.0, or a fresh container (the record is `.orun/`, which no checkout carries) |
 | Secret WRITE fails `not_found` while listings work | the API key's role is below admin; re-mint it with the admin role |
-| Deploy lane: Authentication error (10000) | the connection's token lacks Workers Scripts Write; re-issue it, re-connect, re-run `01-product` |
+| Deploy lane: Authentication error (10000) | the connection's token lacks Workers Scripts Write; re-issue it, re-connect, re-run `02-live` |
 | `land` stops: `the landing's own check failed — orun plan for …` | the site's tree does not plan — the line after it is orun's own error (an unknown component type, a composition that does not resolve). Nothing was pushed. Fix the tree (or the baseline) and re-run the phase |
 | `land` waits on CI after all | the site's repository requires a status check on `main` (branch protection or a ruleset), so GitHub refused the early merge; the landing waits for the check as a `checks: ci` landing would, then merges |
-| Convergence failed AFTER the PR merged; re-running lands nothing | expected on its own — the files are on main. Re-run the phase (`--phase 01-product`, `--redo 01-product`, or the console's Retry): its `retouch` hook gives the landing a diff and the site redeploys |
-| The site's `intent.yaml` says `workspace: ws_SET_ME` | `orunWorkspace` was empty and the build ran outside a workspace; set it and re-run `01-product` |
-| A bootstrap stopped before `03-docs`; prod no longer waits on stage | the gate is deferred, not dropped: run `03-docs`, or `node tooling/bootstrap/promotion.mjs --restore --file <site>/intent.yaml` |
+| Convergence failed AFTER the PR merged; re-running lands nothing | expected on its own — the files are on main. Re-run the phase (`--phase 02-live`, `--redo 02-live`, or the console's Retry): its `retouch` hook gives the landing a diff and the site redeploys |
+| The site's `intent.yaml` says `workspace: ws_SET_ME` | `orunWorkspace` was empty and the build ran outside a workspace; set it and re-run `01-scaffold` |
+| A bootstrap stopped before `03-docs`; prod no longer waits on stage | the gate is deferred, not dropped: run `03-docs`, or `node tooling/bootstrap/promotion.mjs --restore --file <site>/intent.yaml` (and `dev-lanes.mjs --restore`) |
 | `✕ input "productname" is required` | all three required inputs (`reponame`, `productname`, `githuborg`) must be set on every invocation, single-phase ones included |
 | `unknown flag: --phase`, `has no parameter "checks"`, `has no parameter "secrets"` or another parse error in the blueprint | the CLI is below the v2.88.0 floor |
-| `01-product` lanes fail in `build-app` resolving a dependency | the site's intent no longer pins stack-tectonic 0.19.0. 0.20.0's lane-scoped install links each job's node_modules out of its staged tree; this site's Vite build has not been tried there, a Next.js sibling's did not build there, and the pin keeps the install the e2e tier proves. `intent.yaml` says why |
-| `01-product`'s convergence reported green, then `verify` got 404 from both URLs | a second workflow ran on the push to main and the watch took its run. Only `ci.yml` may run on a push to main, and a site carries no other workflow (`testing/coverage.test.sh` holds the rule); read the CI run on main for the real result |
+| `02-live` lanes fail in `build-app` resolving a dependency | the site's intent no longer pins stack-tectonic 0.19.0. 0.20.0's lane-scoped install links each job's node_modules out of its staged tree; this site's Vite build has not been tried there, a Next.js sibling's did not build there, and the pin keeps the install the e2e tier proves. `intent.yaml` says why |
+| `02-live`'s convergence reported green, then `verify` got 404 from both URLs | a second workflow ran on the push to main and the watch took its run. Only `ci.yml` may run on a push to main, and a site carries no other workflow (`testing/coverage.test.sh` holds the rule); read the CI run on main for the real result |
+| orun.work's preview pane opens the stage URL in a new tab instead of framing it | the stage Worker sends no `frame-ancestors` naming orun.work: the deploy predates this baseline's framing policy, or `DEPLOY_ENV` did not reach the build (`turbo.json`'s `env`, the component's `environmentBuildVar`). `curl -sI <stage URL>` shows the header |

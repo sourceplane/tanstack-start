@@ -28,3 +28,10 @@ spec:
         - "a site built from it carries the site only, renamed throughout to its own name, repository and Worker"
         - "Baseline CI is green: contract tests, generated component docs, the blueprint read by the pinned orun, the leak gate, the offline bootstrap and the end-to-end tier — the stage lane's steps in a staged job tree, the committed Worker config held to the one the Vite plugin writes, the Worker smoke-tested and walked"
       tasks: [TS-3]
+    - name: "TS3 — scaffold, then live"
+      exitCriteria:
+        - "the build splits at a declared stage: 01-scaffold lands the whole site with GitHub alone, its deploy lanes parked, and main's CI is green and deploys nothing; 02-live binds the late-bound subdomain, mints the Cloudflare credentials, restores the lanes and deploys to stage and prod; 03-docs records it"
+        - "the card declares spec.stages {scaffold: 01-scaffold, live: 02-live} and subdomain lateBound, and Orunbase's manifest parser accepts it"
+        - "a full build ends on baseline-v1's tree; a code-only build taken live later ends on the full build's, byte for byte"
+        - "the stage Worker sends a frame-ancestors policy naming orun.work's origins; prod sends none"
+      tasks: [TS-4]

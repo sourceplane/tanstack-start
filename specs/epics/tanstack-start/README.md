@@ -11,7 +11,7 @@ somebody else's site in one landing.**
 
 | | |
 |---|---|
-| Status | ✅ Shipped (`baseline-v1`) — proven offline in Baseline CI; not yet live (risk TS-A) |
+| Status | ✅ Shipped (`baseline-v1`); TS3, the two-stage build, on `main` for `baseline-v2` — proven offline in Baseline CI; not yet live (risk TS-A) |
 | Upstream | [vercel/vercel › examples/tanstack-start](https://github.com/vercel/vercel/tree/main/examples/tanstack-start), at `84878e5` — Apache-2.0 |
 | Reference | [sveltekit-boilerplate](https://github.com/sourceplane/sveltekit-boilerplate) (the Vite-built Worker + Static Assets scaffolding, and the cookie-kept todos) |
 | Key | `TS` |
@@ -34,3 +34,4 @@ somebody else's site in one landing.**
 | TS0 — the spec | the repository, its intent, CI, tooling and spec index; this doc set | TS-1 |
 | TS1 — TanStack Start on Workers | the template in `apps/web` on Cloudflare's Vite plugin, the cookie-kept todos, its tests, the README | TS-2 |
 | TS2 — a baseline | the console card, the build document, the context pack and the baseline's tests | TS-3 |
+| TS3 — scaffold, then live | the build split at a declared stage (`01-scaffold` with GitHub alone, `02-live` with Cloudflare), the late-bound subdomain, and the stage Worker framable by orun.work (saas-orun-work WA5) | TS-4 |

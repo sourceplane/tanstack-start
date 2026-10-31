@@ -4,6 +4,7 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
+      "env": ["DEPLOY_ENV"],
       "outputs": ["dist/**"]
     },
     "test": {

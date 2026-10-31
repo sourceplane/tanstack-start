@@ -1,0 +1,23 @@
+# Task contract template for the 01-scaffold landing.
+# Unbound to a key on purpose: `orun.task/ensure@v1` seals and attaches it to
+# the key the allocator issues. It lives under `.baseline/`, not `tasks/`,
+# because `tasks/` is this repository's own work tree (`intent.yaml` `work:`),
+# where an unkeyed contract is an error. gates: [] is a DECLARATION — merge
+# alone finishes this task; nothing deploys, so there is no convergence for
+# the plane to observe.
+#
+# The whole site in one landing, GitHub only: the scaffold stage of a build
+# that splits at a declared stage (blueprint.yaml `spec.stages`). `affects`
+# names COMPONENTS, by metadata.name — the site is one component, and its test
+# runs inside it (vitest in apps/web).
+apiVersion: orun.io/v1
+kind: TaskContract
+spec:
+  goal: The site's repository is born and linked, and the whole site lands in one pull request with its deploy lanes parked, so CI on main checks it and deploys nothing until the site goes live
+  affects:
+    - web
+  doneWhen:
+    - repo pushed, main pinned as default, workspace linked (orun cloud link)
+    - the whole site on main, branded, intent.yaml's stage and prod push activation deferred
+    - main's run green, planning no deploy
+  gates: []

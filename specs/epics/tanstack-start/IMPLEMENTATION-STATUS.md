@@ -5,6 +5,7 @@
 | TS0 — the spec | ✅ | TS-1 |
 | TS1 — TanStack Start on Workers | ✅ | TS-2 |
 | TS2 — a baseline | ✅ | TS-3, tagged `baseline-v1` |
+| TS3 — scaffold, then live | ✅ on `main` | TS-4, to be tagged `baseline-v2` |
 
 ## Departures from the upstream template
 
@@ -37,3 +38,46 @@ from the browser; the drawer's SSR sub-menu is collapsed by default.
 The Worker: 1 360.69 KiB, 304.58 KiB gzipped, inside Workers Free's 3 MiB
 (`wrangler deploy --dry-run`, the same from
 `wrangler.jsonc` and from the plugin's `dist/server/wrangler.json`).
+
+## TS3 — scaffold, then live (as built)
+
+- **Three phases, two stages.** `01-scaffold` (GitHub only) places the whole
+  tree, brands it, parks stage's and prod's push activation and lands it;
+  `02-live` (Cloudflare) binds the subdomain, restores the lanes, defers the
+  promotion gate and dev's push lanes, retouches `web`, mints the two keys,
+  lands, watches and probes; `03-docs` restores the gate and dev's lanes and
+  records. The card's `spec.stages` is `{scaffold: 01-scaffold, live:
+  02-live}`; `expectedMinutes` 5 (1 + 3 + 1), an estimate.
+- **Dev keeps its push activation in the scaffold.** orun refuses a push plan
+  that no environment answers (`trigger binding "github-push-main" matched,
+  but no environment references it`), so parking all three would turn `main`
+  red; with dev left on, a code-only site's merge plans dev's verify lane — no
+  credential — and nothing else. `promotion` and `dev-lanes` moved to
+  `02-live`, the landing whose convergence they shorten.
+- **The late-bound subdomain is bound by a hook.** A resume does not place
+  `01-scaffold`'s files again, so `02-live`'s `subdomain` hook rewrites the
+  placeholder as a whole DNS label in every tracked file, `.rebrand/values.json`
+  last, refusing the placeholder itself and a move from one real subdomain to
+  another. `03-docs` renders the record from the bound identity file.
+- **No GitHub connection probe.** The scaffold's GitHub gate is `link`
+  (`orun cloud check`): a managed-GitHub repository is linked through a
+  platform connection the workspace's list never shows, so a `github`
+  doctor probe would time out on a ready build. Cloudflare is probed by
+  `02-live` alone, deferred to just before it when it is missing at the start.
+- **Framing.** `apps/web/src/server.ts` is the Worker's entry (named in
+  `vite.config.ts` in place of `@tanstack/react-start/server-entry`, which it
+  wraps); `src/lib/framing.ts` holds the per-environment `frame-ancestors`
+  map — on stage `'self'`, orun.work's stage and prod origins and
+  `http://localhost:*`. The environment is written in at build time:
+  the component's `environmentBuildVar: DEPLOY_ENV` (stack-tectonic 0.19.0
+  exports it to `build-app`), passed by `apps/web/turbo.json`'s `env`, and
+  `define`d as `__DEPLOY_ENV__`. The Worker grew by about 1 KiB (1 361.86 KiB,
+  305.45 KiB gzipped).
+- **Proven offline.** A full build ends on `baseline-v1`'s tree but for the
+  framing files and the redeploy marker's phase; its three merges plan dev's
+  verify lane, then the deploy to stage and prod side by side, then nothing;
+  a code-only build (`--until 01-scaffold`, no subdomain) taken live later
+  ends on the full build's tree byte for byte. Also run against orun v2.90.0
+  (late-bound inputs), which refuses a run past the scaffold that would keep
+  the placeholder.
+

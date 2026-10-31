@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# The two things a bootstrap turns off in intent.yaml and puts back —
-# `prod.promotion` (tooling/bootstrap/promotion.mjs) and dev's push-to-main
-# activation (tooling/bootstrap/dev-lanes.mjs) — must each defer, be
-# idempotent both ways, leave a parseable intent while deferred, and restore
-# the file BYTE-FOR-BYTE: a restore that reproduced the block by hand would
-# be a second place the intent is authored.
+# The three things a bootstrap turns off in intent.yaml and puts back —
+# `prod.promotion` (tooling/bootstrap/promotion.mjs), dev's push-to-main
+# activation (tooling/bootstrap/dev-lanes.mjs), and stage's and prod's
+# push-to-main activation, the deploy lanes a code-only site runs without
+# (tooling/bootstrap/deploys.mjs) — must each defer, be idempotent both ways,
+# leave a parseable intent while deferred, and restore the file
+# BYTE-FOR-BYTE: a restore that reproduced the block by hand would be a
+# second place the intent is authored.
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root="$(cd "$here/.." && pwd)"
@@ -15,7 +17,7 @@ bad() { echo "   ✕  $1" >&2; fail=1; }
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 cp "$root/intent.yaml" "$tmp/intent.yaml"
 
-for tool in promotion dev-lanes; do
+for tool in promotion dev-lanes deploys; do
   f="$tmp/intent.yaml"; cp "$root/intent.yaml" "$f"
   echo "── $tool.mjs"
   node "$root/tooling/bootstrap/$tool.mjs" --check --file "$f" | grep -q -E 'enforced|active' && ok "starts enforced/active" || bad "starts enforced/active"
@@ -39,6 +41,29 @@ d = yaml.safe_load(open(sys.argv[1]))
 refs = d["environments"]["dev"]["activation"]["triggerRefs"]
 assert "github-push-main" not in refs and "github-pull-request" in refs, refs
 PY
+f="$tmp/intent.yaml"; cp "$root/intent.yaml" "$f"
+node "$root/tooling/bootstrap/deploys.mjs" --defer --file "$f" >/dev/null
+python3 - "$f" <<'PY' && ok "stage and prod are not activated by github-push-main while deferred; dev still is" || bad "stage and prod are not activated by github-push-main while deferred; dev still is"
+import sys, yaml
+d = yaml.safe_load(open(sys.argv[1]))["environments"]
+for env in ("stage", "prod"):
+    refs = d[env]["activation"]["triggerRefs"]
+    assert "github-push-main" not in refs and "github-pull-request" in refs, (env, refs)
+# orun refuses a push plan no environment answers; dev answers it (and
+# verifies), so a code-only site's merge still plans — and deploys nothing.
+assert "github-push-main" in d["dev"]["activation"]["triggerRefs"], d["dev"]
+assert "promotion" in d["prod"], "deploys.mjs touched prod's promotion gate"
+PY
+# 01-scaffold defers the deploy lanes; 02-live restores them and defers the
+# other two; 03-docs restores those. The sequence must put back exactly the
+# file it started from.
+f="$tmp/intent.yaml"; cp "$root/intent.yaml" "$f"
+for step in "deploys --defer" "deploys --restore" "promotion --defer" "dev-lanes --defer" \
+            "promotion --restore" "dev-lanes --restore"; do
+  node "$root/tooling/bootstrap/${step%% *}.mjs" "${step#* }" --file "$f" >/dev/null
+done
+cmp -s "$f" "$root/intent.yaml" && ok "the bootstrap's whole sequence of deferrals restores byte-for-byte" \
+  || bad "the bootstrap's whole sequence of deferrals restores byte-for-byte"
 f="$tmp/intent.yaml"; cp "$root/intent.yaml" "$f"
 node "$root/tooling/bootstrap/promotion.mjs" --defer --file "$f" >/dev/null
 python3 - "$f" <<'PY' && ok "prod has no promotion gate while deferred" || bad "prod has no promotion gate while deferred"

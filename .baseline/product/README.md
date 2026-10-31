@@ -26,7 +26,8 @@ and how to operate it is in
 | The todo store: the visitor's list in one httpOnly cookie | `apps/web/src/data/todos.ts` |
 | The header and its navigation | `apps/web/src/components/Header.tsx` |
 | Workers build and deploy contract | `apps/web/vite.config.ts`, `apps/web/wrangler.jsonc`, `apps/web/component.yaml` |
-| Tests (the site's name, the todo store) | `apps/web/src/**/*.test.ts` (vitest) |
+| The Worker's entry, and who may frame the site | `apps/web/src/server.ts`, `apps/web/src/lib/framing.ts` |
+| Tests (the site's name, the todo store, the framing policy) | `apps/web/src/**/*.test.ts` (vitest) |
 
 ## Getting started
 
@@ -72,6 +73,26 @@ The pipeline holds one credential, GitHub's own `GITHUB_TOKEN`. The
 Cloudflare token and account id are brokered per run from the workspace's
 Cloudflare connection; nothing provider-shaped is stored in the repository
 or in GitHub.
+
+**Before the site goes live.** A site whose code was built before its
+Cloudflare account was connected deploys nothing yet: `intent.yaml` carries
+a `# @deploys-deferred:…` marker where stage's and prod's
+`- github-push-main` trigger goes, so a merge to `main` plans dev's verify
+lane (the site built and dry-deployed) and nothing else, and its CI stays
+green. Going live — connecting Cloudflare and running the build's live
+stage — puts both lines back, writes your account's workers.dev subdomain
+where a placeholder stood in for it, and deploys.
+
+**Who may frame the site.** On stage, every page the Worker renders says
+who may show it in a frame: `Content-Security-Policy: frame-ancestors 'self'
+https://orun-agent-web-stage.oruncloud.workers.dev
+https://orun-agent-web-prod.oruncloud.workers.dev http://localhost:*` —
+orun.work's preview pane, which shows the stage deploy, and orun.work run
+locally. Prod sends no policy. The list is one map per environment in
+`apps/web/src/lib/framing.ts`: edit it and merge, and the next deploy of
+that environment sends it. (Each deploy lane tells its build which
+environment it is for, as `DEPLOY_ENV`; `component.yaml` names the
+variable.)
 
 **Deploy by hand.** Orunbase's **Deploy** button on a component, or **Run
 workflow** on the CI workflow in GitHub's Actions tab (on `main`), runs
