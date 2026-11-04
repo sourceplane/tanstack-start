@@ -90,6 +90,13 @@ pnpm --filter @app/web dev        # http://localhost:3000, the server in workerd
 pnpm --filter @app/web preview    # wrangler dev over the built Worker
 ```
 
+`orun preview` runs the same dev server the way a coding session on orun.work
+does, for its live **Preview** tab: `apps/web/component.yaml` declares it
+(`spec.preview`: install, then `vite dev` on 127.0.0.1:3000) and `intent.yaml`
+names it (`preview: {component: web}`). `orun preview status`, `logs web` and
+`stop` follow it; its state and log live in `.orun/preview/`, which git
+ignores.
+
 The todo list keeps each visitor's list in their own browser: one httpOnly
 cookie holding the list as JSON (base64url-encoded), capped at 50 todos of
 up to 100 characters and refused past ~3.8 KB so it stays under a browser's

@@ -38,6 +38,19 @@ spec:
           - profile: deploy
             when:
               triggerRef: github-push-main
+  # How the site runs itself for orun.work's live Preview tab
+  # (saas-parallel-baselining PB4): `orun preview` starts this, and a coding
+  # session keeps it running while it works, so the person watches the site
+  # change as it is built. The dev server binds the box's loopback only; the
+  # platform forwards the preview's own host to this one port. It installs
+  # first, so a checkout the session has not installed yet still comes up.
+  preview:
+    run:
+      - sh
+      - -c
+      - pnpm install --frozen-lockfile --prefer-offline && exec pnpm exec vite dev --host 127.0.0.1 --port 3000 --strictPort
+    port: 3000
+    path: /
   parameters:
     nodeVersion: '22'
     pnpmVersion: '10.12.1'
